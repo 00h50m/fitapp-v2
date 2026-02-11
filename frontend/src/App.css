@@ -1,34 +1,41 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* App container - no center alignment to maintain natural reading flow */
+.App {
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+/* Safe area for mobile devices */
+@supports (padding: max(0px)) {
+  .safe-area-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+/* Prevent rubber-banding on iOS */
+html, body {
+  overscroll-behavior: none;
 }
 
-.App-link {
-    color: #61dafb;
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+/* Remove tap highlight on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Better touch targets for mobile */
+@media (hover: none) and (pointer: coarse) {
+  button, 
+  [role="button"],
+  a {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
