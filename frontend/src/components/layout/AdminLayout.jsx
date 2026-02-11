@@ -32,8 +32,15 @@ const navItems = [
   },
 ];
 
-export const AdminSidebar = ({ isOpen, onToggle }) => {
+export const AdminSidebar = ({ isOpen, onToggle, onClose }) => {
   const location = useLocation();
+
+  // Close sidebar handler for mobile/tablet
+  const handleCloseSidebar = () => {
+    if (window.innerWidth < 1024) {
+      onClose();
+    }
+  };
 
   return (
     <>
@@ -41,7 +48,11 @@ export const AdminSidebar = ({ isOpen, onToggle }) => {
       {isOpen && (
         <div 
           className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 lg:hidden"
-          onClick={onToggle}
+          onClick={handleCloseSidebar}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Escape' && handleCloseSidebar()}
+          aria-label="Close sidebar"
         />
       )}
 
@@ -92,7 +103,7 @@ export const AdminSidebar = ({ isOpen, onToggle }) => {
                 <NavLink
                   key={item.href}
                   to={item.href}
-                  onClick={() => window.innerWidth < 1024 && onToggle()}
+                  onClick={handleCloseSidebar}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl",
                     "text-sm font-medium",
@@ -180,11 +191,12 @@ export const AdminLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
+  const closeSidebar = () => setSidebarOpen(false);
 
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
-      <AdminSidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
+      <AdminSidebar isOpen={sidebarOpen} onToggle={toggleSidebar} onClose={closeSidebar} />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-screen lg:ml-0">
