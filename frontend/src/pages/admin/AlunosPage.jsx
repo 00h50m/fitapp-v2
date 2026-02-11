@@ -57,9 +57,11 @@ const AlunosPage = () => {
         .order('created_at', { ascending: false });
 
       if (fetchError) {
-        throw fetchError;
+        console.error('Supabase error:', fetchError);
+        throw new Error(fetchError.message || 'Erro ao buscar dados do Supabase');
       }
 
+      console.log('Students fetched:', data);
       setStudents(data || []);
     } catch (err) {
       console.error('Error fetching students:', err);
