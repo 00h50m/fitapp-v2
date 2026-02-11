@@ -39,7 +39,8 @@ const WorkoutPage = () => {
   // Check if access is active
   const isAccessActive = useMemo(() => {
     const today = new Date();
-    const accessEnd = new Date(student.access_end);
+    today.setHours(0, 0, 0, 0);
+    const accessEnd = new Date(student.access_end + "T23:59:59");
     return today <= accessEnd;
   }, [student.access_end]);
 
