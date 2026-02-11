@@ -267,8 +267,100 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+  - task: "Admin Dashboard page loads correctly"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/admin/DashboardPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Need to verify admin dashboard loads with sidebar, stats cards, activity list, and resumo section"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Dashboard loads perfectly with fixed sidebar (Dashboard, Alunos, Exercícios, Sair), 4 stats cards (Total de Alunos: 127, Alunos Ativos: 98, Exercícios: 45, Treinos Hoje: 23), activity list with 5 recent actions, and Resumo Rápido section with completion rate (87%), pending renewals (12), and average workouts (3.2)."
+
+  - task: "Admin Alunos page functionality"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/admin/AlunosPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Need to test Alunos page with stats cards, search functionality, student table, and dropdown menus"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Alunos page works perfectly. Navigation successful, stats cards show Total/Ativos/Inativos counts, search functionality works (tested with 'João'), student table displays with all headers (Aluno, Treino Atual, Acesso, Status, Ações), and student data is properly formatted with names, emails, workout assignments, and status badges."
+
+  - task: "Admin Exercícios page functionality"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/admin/ExerciciosPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Need to test Exercícios page with filter buttons, exercise cards, search, and muscle group filtering"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Exercícios page fully functional. All muscle group filter buttons work (Todos, Peito, Pernas, Costas, Ombros, Bíceps, Tríceps), exercise cards display properly with muscle group badges, sets/reps/rest info, video and notes indicators. Search functionality works, and filtering by 'Peito' correctly filters exercises."
+
+  - task: "Admin sidebar navigation and active states"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/layout/AdminLayout.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Need to verify sidebar navigation between pages and active state highlighting"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Sidebar navigation works perfectly. All menu items (Dashboard, Alunos, Exercícios) navigate correctly, active state highlighting works properly, and logout button is present and functional."
+
+  - task: "Admin responsive tablet behavior"
+    implemented: true
+    working: false
+    file: "/app/frontend/src/components/layout/AdminLayout.jsx"
+    stuck_count: 1
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Need to test tablet responsive behavior - sidebar should hide, hamburger menu should appear, and sidebar should close after navigation"
+      - working: false
+        agent: "testing"
+        comment: "❌ FAILED: Tablet responsive behavior has issues. Hamburger menu appears correctly and sidebar opens when clicked, but sidebar does NOT auto-close after navigation on tablet (768x1024). Overlay click also does not close the sidebar properly. This affects UX on tablet devices."
+
+  - task: "Student area exercise checkbox functionality"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/workout/ExerciseCard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "Previous test showed checkboxes working"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Exercise checkboxes work perfectly with correct selector (button[role='checkbox']). Found 7 checkboxes, clicking updates progress correctly (0/7 → 1/7 → 2/7), finish button becomes enabled, and finish modal shows accurate progress."
+
 agent_communication:
   - agent: "testing"
     message: "Starting comprehensive testing of mobile fitness app. Will test all core functionality including workout page loading, exercise interactions, progress tracking, video modals, and finish workout flow on mobile viewport 430x932."
   - agent: "testing"
     message: "✅ TESTING COMPLETED SUCCESSFULLY: All 10 core features tested and working perfectly. Mobile fitness app is fully functional with excellent UX on 430x932 viewport. All flows tested: page loading, progress tracking, exercise checkboxes, video modals, finish workout modal, PDF download, and responsive design. No critical issues found."
+  - agent: "testing"
+    message: "🎯 COMPREHENSIVE ADMIN & STUDENT TESTING COMPLETED: Tested both areas as requested. Student area (mobile 430x932) works perfectly - all 10 features functional. Admin area (desktop 1920x800) mostly working - Dashboard, Alunos, and Exercícios pages all functional with proper navigation, stats, search, and filtering. ISSUE FOUND: Tablet responsive behavior (768x1024) has sidebar auto-close problems - sidebar doesn't close after navigation or overlay clicks, affecting tablet UX."
