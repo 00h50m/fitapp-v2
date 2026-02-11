@@ -7,7 +7,7 @@ export const mockStudent = {
   email: "joao@email.com",
   avatar_url: null,
   access_start: "2025-01-01",
-  access_end: "2024-12-31", // Past date to test inactive state
+  access_end: "2026-12-31", // Future date - Active access
   created_at: "2025-01-01T10:00:00Z",
 };
 
