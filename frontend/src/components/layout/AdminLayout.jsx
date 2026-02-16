@@ -143,9 +143,10 @@ export const AdminSidebar = ({ isOpen, onToggle, onClose }) => {
               "w-full justify-start gap-3 px-4 py-3 h-auto",
               "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
             )}
-            onClick={() => {
-              // Mock logout - would redirect to login
-              window.location.href = "/";
+            onClick={async () => {
+              const { supabase } = await import('@/lib/supabase');
+              await supabase.auth.signOut();
+              window.location.href = "/login";
             }}
           >
             <LogOut className="h-5 w-5" />
