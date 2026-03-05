@@ -46,32 +46,83 @@ const StudentDashboard = () => {
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [finishing, setFinishing] = useState(false);
 
-  // Fetch student's workout sessions
-  const fetchSessions = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const { data, error: fetchError } = await supabase
-        .from('workout_sessions')
-        .select('*')
-        .eq('student_id', user.id)
-        .order('session_date', { ascending: false });
+  const getOrCreateActiveSession = async () => {
+  try {
+    // 1. Buscar sessão ativa
+    const { data: activeSession, error } = await supabase
+      .from('workout_sessions')
+      .select('*')
+      .eq('student_id', user.id)
+      .eq('status', 'active')
+      .single();
 
-      if (fetchError) throw fetchError;
-      setSessions(data || []);
-    } catch (err) {
-      console.error('Erro ao buscar sessões:', err);
-      setError(err.message || 'Erro ao carregar sessões');
-    } finally {
-      setLoading(false);
+    if (activeSession) {
+      return activeSession;
     }
-  };
+
+    // 2. Se não existir → descobrir workout_id atual do aluno
+    const { data: studentWorkout } = await supabase
+      .from('student_workouts')
+      .select('workout_id')
+      .eq('student_id', user.id)
+      .single();
+
+    if (!studentWorkout) {
+      throw new Error('Aluno sem treino vinculado');
+    }
+
+    // 3. Criar nova sessão
+    const { data: newSession, error: createError } = await supabase
+      .from('workout_sessions')
+      .insert([
+        {
+          workout_id: studentWorkout.workout_id,
+          student_id: user.id,
+          session_date: new Date().toISOString(),
+          status: 'active'
+        }
+      ])
+      .select()
+      .single();
+
+    if (createError) throw createError;
+
+    return newSession;
+
+  } catch (err) {
+    console.error('Erro ao obter/criar sessão:', err);
+    throw err;
+  }
+};
+
+  // Fetch student's workout sessions
+const fetchSessions = async () => {
+  setLoading(true);
+  setError(null);
+
+  try {
+    const { data, error: fetchError } = await supabase
+      .from('workout_sessions')
+      .select('*')
+      .eq('student_id', user.id)
+      .order('session_date', { ascending: false });
+
+    if (fetchError) throw fetchError;
+    setSessions(data || []);
+  } catch (err) {
+    console.error('Erro ao buscar sessões:', err);
+    setError(err.message || 'Erro ao carregar sessões');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Fetch blocks for a session
   const fetchBlocks = async (session) => {
     setLoadingBlocks(true);
     setSelectedSession(session);
+    console.log("SESSION ID:", session.id);
+    console.log("USER ID:", user.id);
     
     try {
       const { data, error: fetchError } = await supabase
@@ -90,36 +141,33 @@ const StudentDashboard = () => {
     }
   };
 
-  // Toggle block completion
-  const toggleBlockCompletion = async (block) => {
-    const newCompletedState = !block.completed;
-    
-    // Optimistic update
-    setBlocks(prev => prev.map(b => 
-      b.id === block.id ? { ...b, completed: newCompletedState } : b
-    ));
+const toggleBlockCompletion = async (block) => {
+  const isCompleted = !!block.completed_at;   // ← FALTAVA ISSO
 
-    try {
-      const { error: updateError } = await supabase
-        .from('workout_block_logs')
-        .update({ completed: newCompletedState })
-        .eq('id', block.id);
+  const newValue = isCompleted ? null : new Date().toISOString();
 
-      if (updateError) throw updateError;
-    } catch (err) {
-      // Revert on error
-      setBlocks(prev => prev.map(b => 
-        b.id === block.id ? { ...b, completed: !newCompletedState } : b
-      ));
-      console.error('Erro ao atualizar bloco:', err);
-      toast.error('Erro ao atualizar bloco');
-    }
-  };
+  setBlocks(prev =>
+    prev.map(b =>
+      b.id === block.id ? { ...b, completed_at: newValue } : b
+    )
+  );
 
-  // Check if all blocks are completed
-  const allBlocksCompleted = blocks.length > 0 && blocks.every(b => b.completed);
-  const completedCount = blocks.filter(b => b.completed).length;
-  const progressPercent = blocks.length > 0 ? Math.round((completedCount / blocks.length) * 100) : 0;
+  const { error } = await supabase
+    .from('workout_block_logs')
+    .update({ completed_at: newValue })
+    .eq('id', block.id);
+
+  if (error) {
+    toast.error('Erro ao atualizar bloco');
+  }
+};
+  // Progress calculations
+  const completedCount = blocks.filter(b => b.completed_at).length;
+  const allBlocksCompleted = blocks.length > 0 && completedCount === blocks.length;
+  const progressPercent =
+    blocks.length > 0
+      ? Math.round((completedCount / blocks.length) * 100)
+      : 0;
 
   // Finish session
   const handleFinishSession = async () => {
@@ -129,7 +177,10 @@ const StudentDashboard = () => {
     try {
       const { error: updateError } = await supabase
         .from('workout_sessions')
-        .update({ completed: true, completed_at: new Date().toISOString() })
+        .update({ 
+            status: 'finished',
+            completed_at: new Date().toISOString()
+          })
         .eq('id', selectedSession.id);
 
       if (updateError) throw updateError;
@@ -156,11 +207,23 @@ const StudentDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    if (user) {
-      fetchSessions();
-    }
-  }, [user]);
+const initializeDashboard = async () => {
+  setLoading(true);
+  try {
+    const session = await getOrCreateActiveSession();
+    await fetchBlocks(session);
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+//useEffect(() => {
+  //if (user) {
+  //  initializeDashboard();
+ // }
+// }, [user]);
 
   // Format date
   const formatDate = (dateString) => {
@@ -249,7 +312,7 @@ const StudentDashboard = () => {
                     className={cn(
                       "bg-card border-border cursor-pointer transition-all",
                       "hover:border-primary/30 active:scale-[0.98]",
-                      session.completed && "border-success/30 bg-success/5"
+                      session.status === 'finished' && "border-success/30 bg-success/5"
                     )}
                     onClick={() => fetchBlocks(session)}
                   >
@@ -258,11 +321,11 @@ const StudentDashboard = () => {
                         <div className="flex items-center gap-3">
                           <div className={cn(
                             "h-10 w-10 rounded-lg flex items-center justify-center",
-                            session.completed 
+                            session.status === 'finished' 
                               ? "bg-success/20 text-success" 
                               : "bg-primary/10 text-primary"
                           )}>
-                            {session.completed ? (
+                            {session.status === 'finished' ? (
                               <CheckCircle2 className="h-5 w-5" />
                             ) : (
                               <Dumbbell className="h-5 w-5" />
@@ -279,7 +342,7 @@ const StudentDashboard = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {session.completed && (
+                          {session.status === 'finished' && (
                             <Badge variant="success" className="text-xs">
                               Concluído
                             </Badge>
@@ -377,7 +440,7 @@ const StudentDashboard = () => {
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
                       <Checkbox
-                        checked={block.completed}
+                        checked={!!block.completed_at}
                         onCheckedChange={() => toggleBlockCompletion(block)}
                         className="h-6 w-6"
                       />

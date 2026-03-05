@@ -1,110 +1,117 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 const AuthContext = createContext({});
 
-export const useAuth = () => useContext(AuthContext);
-
 export const AuthProvider = ({ children }) => {
+  const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch user profile from profiles table
-  const fetchProfile = async (userId) => {
+  console.log("PROFILE:", profile);
+console.log("ROLE:", profile?.role);
+
+  // 🔹 Função única responsável por carregar profile
+  const loadProfile = async (userId) => {
     try {
       const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
         .single();
 
       if (error) {
-        console.error('Erro ao buscar perfil:', error);
-        return null;
+        console.error("Erro ao carregar profile:", error);
+        setProfile(null);
+        return;
       }
-      return data;
+
+      setProfile(data);
     } catch (err) {
-      console.error('Erro ao buscar perfil:', err);
-      return null;
+      console.error("Erro inesperado ao buscar profile:", err);
+      setProfile(null);
     }
   };
 
   useEffect(() => {
-    // Get initial session
-    const getSession = async () => {
+    const initialize = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        
+
+        setSession(session);
+
         if (session?.user) {
           setUser(session.user);
-          const profileData = await fetchProfile(session.user.id);
-          setProfile(profileData);
+          await loadProfile(session.user.id);
         }
       } catch (error) {
-        console.error('Erro ao obter sessão:', error);
+        console.error("Erro ao inicializar auth:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    getSession();
+    initialize();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        setSession(session);
+        setLoading(true);
+
         if (session?.user) {
           setUser(session.user);
-          const profileData = await fetchProfile(session.user.id);
-          setProfile(profileData);
+          await loadProfile(session.user.id);
         } else {
           setUser(null);
           setProfile(null);
         }
+
         setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
-  // Login with email/password
   const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
+      console.error("Erro no login:", error);
       throw error;
     }
-
-    return data;
   };
 
-  // Logout
   const logout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      throw error;
-    }
-    setUser(null);
-    setProfile(null);
+    await supabase.auth.signOut();
   };
 
-  const value = {
-    user,
-    profile,
-    loading,
-    login,
-    logout,
-    isAdmin: profile?.role === 'admin',
-    isStudent: profile?.role === 'student',
-  };
+  // 🔥 Fonte verdadeira de permissão: booleano
+  const isAdmin = profile?.is_admin === true;
+  const isStudent = profile?.role === "student";
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider
+      value={{
+        session,
+        user,
+        profile,
+        loading,
+        login,
+        logout,
+        isAdmin,
+        isStudent,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
+
+export const useAuth = () => useContext(AuthContext);

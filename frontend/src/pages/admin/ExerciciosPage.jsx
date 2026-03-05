@@ -1,24 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { 
-  Dumbbell, 
-  Search, 
-  Plus, 
-  MoreHorizontal,
-  Play,
-  Clock,
-  Layers,
-  Repeat,
-  Eye,
-  Edit,
-  Trash2,
-  Video,
-  FileText
-} from "lucide-react";
+import { Dumbbell, Search, Plus, MoreHorizontal, Play, Clock, Layers, Repeat, Eye, Edit, Trash2, Video, FileText } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,91 +13,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-
-// Mock exercises data
-const mockExercises = [
-  {
-    id: "1",
-    name: "Supino Reto com Barra",
-    muscle_group: "Peito",
-    sets: 4,
-    reps: "10-12",
-    rest_seconds: 90,
-    has_video: true,
-    has_notes: true,
-  },
-  {
-    id: "2",
-    name: "Agachamento Livre",
-    muscle_group: "Pernas",
-    sets: 4,
-    reps: "8-10",
-    rest_seconds: 120,
-    has_video: true,
-    has_notes: true,
-  },
-  {
-    id: "3",
-    name: "Puxada Frontal",
-    muscle_group: "Costas",
-    sets: 4,
-    reps: "10-12",
-    rest_seconds: 90,
-    has_video: false,
-    has_notes: true,
-  },
-  {
-    id: "4",
-    name: "Desenvolvimento com Halteres",
-    muscle_group: "Ombros",
-    sets: 4,
-    reps: "10-12",
-    rest_seconds: 90,
-    has_video: true,
-    has_notes: false,
-  },
-  {
-    id: "5",
-    name: "Rosca Direta",
-    muscle_group: "Bíceps",
-    sets: 3,
-    reps: "12-15",
-    rest_seconds: 60,
-    has_video: true,
-    has_notes: true,
-  },
-  {
-    id: "6",
-    name: "Tríceps Corda",
-    muscle_group: "Tríceps",
-    sets: 3,
-    reps: "12-15",
-    rest_seconds: 60,
-    has_video: false,
-    has_notes: true,
-  },
-  {
-    id: "7",
-    name: "Leg Press 45°",
-    muscle_group: "Pernas",
-    sets: 4,
-    reps: "10-12",
-    rest_seconds: 90,
-    has_video: true,
-    has_notes: true,
-  },
-  {
-    id: "8",
-    name: "Crucifixo na Máquina",
-    muscle_group: "Peito",
-    sets: 3,
-    reps: "12-15",
-    rest_seconds: 60,
-    has_video: true,
-    has_notes: false,
-  },
-];
-
+import { getExercises } from "@/services/exercisesService";
 const muscleGroupColors = {
   "Peito": "bg-red-500/10 text-red-400 border-red-500/30",
   "Costas": "bg-blue-500/10 text-blue-400 border-blue-500/30",
@@ -204,9 +106,25 @@ const ExerciseCard = ({ exercise }) => {
 const ExerciciosPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("Todos");
-  const [exercises] = useState(mockExercises);
 
-  const muscleGroups = ["Todos", ...new Set(exercises.map(e => e.muscle_group))];
+  const [exercises, setExercises] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const data = await getExercises();
+      setExercises(data);
+      setLoading(false);
+    }
+
+    load();
+  }, []);
+
+
+  const muscleGroups = [
+  "Todos",
+  ...new Set((exercises || []).map(e => e.muscle_group))
+];
 
   const filteredExercises = exercises.filter(exercise => {
     const matchesSearch = exercise.name.toLowerCase().includes(searchTerm.toLowerCase());

@@ -1,8 +1,9 @@
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { ProtectedRoute, AdminRoute, StudentRoute, PublicRoute } from "@/components/auth/ProtectedRoutes";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute, AdminRoute, PublicRoute } from "@/components/auth/ProtectedRoutes";
+import { Loader2 } from "lucide-react";
 
 // Pages
 import LoginPage from "@/pages/LoginPage";
@@ -13,77 +14,90 @@ import DashboardPage from "@/pages/admin/DashboardPage";
 import AdminAlunosPage from "@/pages/admin/AdminAlunosPage";
 import ExerciciosPage from "@/pages/admin/ExerciciosPage";
 
-// Home Router - redirects based on role
-const HomeRouter = () => {
-  const { isAdmin, isStudent, loading } = useAuth();
+function AppRoutes() {
+  return (
+    <Routes>
 
-  if (loading) return null;
+      {/* PUBLIC */}
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <LoginPage />
+          </PublicRoute>
+        }
+      />
+
+      {/* ADMIN */}
+      <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <DashboardPage />
+          </AdminRoute>
+        }
+      />
+
+      <Route
+        path="/admin/alunos"
+        element={
+          <AdminRoute>
+            <AdminAlunosPage />
+          </AdminRoute>
+        }
+      />
+
+      <Route
+        path="/admin/exercicios"
+        element={
+          <AdminRoute>
+            <ExerciciosPage />
+          </AdminRoute>
+        }
+      />
+
+      {/* STUDENT */}
+      <Route
+        path="/app"
+        element={
+          <ProtectedRoute>
+            <StudentDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* HOME → REDIRECT INTELIGENTE */}
+      <Route
+        path="/"
+        element={<RedirectByRole />}
+      />
+
+      {/* FALLBACK */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+
+    </Routes>
+  );
+}
+
+import { useAuth } from "@/contexts/AuthContext";
+
+const RedirectByRole = () => {
+  const { isAdmin, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 text-primary animate-spin" />
+      </div>
+    );
+  }
 
   if (isAdmin) {
     return <Navigate to="/admin" replace />;
   }
 
-  if (isStudent) {
-    return <StudentDashboard />;
-  }
-
-  return <Navigate to="/login" replace />;
+  return <Navigate to="/app" replace />;
 };
-
-function AppRoutes() {
-  return (
-    <Routes>
-      {/* Public Routes */}
-      <Route 
-        path="/login" 
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        } 
-      />
-
-      {/* Home - redirects based on role */}
-      <Route 
-        path="/" 
-        element={
-          <ProtectedRoute>
-            <HomeRouter />
-          </ProtectedRoute>
-        } 
-      />
-
-      {/* Admin Routes */}
-      <Route 
-        path="/admin" 
-        element={
-          <AdminRoute>
-            <DashboardPage />
-          </AdminRoute>
-        } 
-      />
-      <Route 
-        path="/admin/alunos" 
-        element={
-          <AdminRoute>
-            <AdminAlunosPage />
-          </AdminRoute>
-        } 
-      />
-      <Route 
-        path="/admin/exercicios" 
-        element={
-          <AdminRoute>
-            <ExerciciosPage />
-          </AdminRoute>
-        } 
-      />
-
-      {/* Catch all - redirect to home */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
-}
 
 function App() {
   return (
@@ -93,17 +107,11 @@ function App() {
           <AppRoutes />
         </AuthProvider>
       </BrowserRouter>
-      <Toaster 
-        position="top-center" 
-        richColors 
+
+      <Toaster
+        position="top-center"
+        richColors
         closeButton
-        toastOptions={{
-          classNames: {
-            toast: 'bg-card border-border',
-            title: 'text-foreground',
-            description: 'text-muted-foreground',
-          }
-        }}
       />
     </div>
   );
