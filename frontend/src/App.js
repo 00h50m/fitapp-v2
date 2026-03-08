@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 // Pages
 import LoginPage from "@/pages/LoginPage";
 import StudentDashboard from "@/pages/student/StudentDashboard";
+import StudentWorkoutPage from "@/pages/student/StudentWorkoutPage";
 
 // Admin Pages
 import DashboardPage from "@/pages/admin/DashboardPage";
