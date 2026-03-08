@@ -93,8 +93,8 @@ console.log("ROLE:", profile?.role);
   };
 
   // 🔥 Fonte verdadeira de permissão: booleano
-  const isAdmin = profile?.is_admin === true;
-  const isStudent = profile?.role === "student";
+    const isAdmin = profile?.role === "admin";
+    const isStudent = profile?.role === "student";
 
   return (
     <AuthContext.Provider
