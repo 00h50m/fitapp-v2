@@ -62,7 +62,7 @@ function AppRoutes() {
         path="/app"
         element={
           <ProtectedRoute>
-            <StudentDashboard />
+            <StudentWorkoutPage />
           </ProtectedRoute>
         }
       />
