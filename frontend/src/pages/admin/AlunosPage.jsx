@@ -132,7 +132,7 @@ const AlunosPage = () => {
               Gerencie os alunos cadastrados no sistema
             </p>
           </div>
-          <Button variant="premium" className="gap-2 w-full sm:w-auto" disabled>
+          <Button variant="premium" onClick={() => navigate("/admin/alunos/novo")}>
             <Plus className="h-4 w-4" />
             Novo Aluno
           </Button>

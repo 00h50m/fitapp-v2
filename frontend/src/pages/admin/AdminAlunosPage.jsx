@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { useNavigate } from "react-router-dom";
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,7 @@ import { toast } from 'sonner';
 
 const AdminAlunosPage = () => {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,26 +53,43 @@ const AdminAlunosPage = () => {
   const [creatingSession, setCreatingSession] = useState(false);
 
   // Fetch students (role = 'student')
-  const fetchStudents = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const { data, error: fetchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'student')
-        .order('created_at', { ascending: false });
+    const fetchStudents = async () => {
 
-      if (fetchError) throw fetchError;
-      setStudents(data || []);
-    } catch (err) {
-      console.error('Erro ao buscar alunos:', err);
-      setError(err.message || 'Erro ao carregar alunos');
-    } finally {
-      setLoading(false);
+      setLoading(true)
+      setError(null)
+
+      try {
+
+        const { data, error } = await supabase
+          .from('profiles')
+          .select(`
+            id,
+            name,
+            email,
+            plan,
+            training_level,
+            is_active,
+            access_end
+          `)
+          .eq('role', 'student')
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        setStudents(data || [])
+
+      } catch (err) {
+
+        console.error('Erro ao buscar alunos:', err)
+        setError(err.message)
+
+      } finally {
+
+        setLoading(false)
+
+      }
+
     }
-  };
 
   useEffect(() => {
     fetchStudents();
@@ -136,7 +155,8 @@ const AdminAlunosPage = () => {
     <AdminLayout>
       <div className="space-y-6 animate-fade-in">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+
           <div>
             <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
               <Users className="h-6 w-6 text-primary" />
@@ -146,6 +166,15 @@ const AdminAlunosPage = () => {
               Gerencie os alunos e suas sessões de treino
             </p>
           </div>
+
+          <Button
+            onClick={() => navigate("/admin/alunos/novo")}
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Aluno
+          </Button>
+
         </div>
 
         {/* Stats Card */}
@@ -217,13 +246,18 @@ const AdminAlunosPage = () => {
             {!loading && !error && (
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader>
-                    <TableRow className="border-border hover:bg-transparent">
-                      <TableHead className="text-muted-foreground">Aluno</TableHead>
-                      <TableHead className="text-muted-foreground hidden md:table-cell">Role</TableHead>
-                      <TableHead className="text-muted-foreground text-right">Ações</TableHead>
+               <TableHeader>
+                    <TableRow>
+
+                    <TableHead>Aluno</TableHead>
+                    <TableHead>Plano</TableHead>
+                    <TableHead>Nível</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Plano até</TableHead>
+                    <TableHead>Ações</TableHead>
+
                     </TableRow>
-                  </TableHeader>
+                    </TableHeader>
                   <TableBody>
                     {filteredStudents.map((student) => (
                       <TableRow 
@@ -279,7 +313,7 @@ const AdminAlunosPage = () => {
             )}
           </CardContent>
         </Card>
-      </div>
+        </div>
 
       {/* Create Session Modal */}
       <Dialog open={showSessionModal} onOpenChange={setShowSessionModal}>

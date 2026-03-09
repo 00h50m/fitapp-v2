@@ -13,6 +13,7 @@ import StudentWorkoutPage from "@/pages/student/StudentWorkoutPage";
 // Admin Pages
 import DashboardPage from "@/pages/admin/DashboardPage";
 import AdminAlunosPage from "@/pages/admin/AdminAlunosPage";
+import CreateStudentPage from "@/pages/admin/CreateStudentPage";
 import ExerciciosPage from "@/pages/admin/ExerciciosPage";
 
 function AppRoutes() {
@@ -47,6 +48,15 @@ function AppRoutes() {
           </AdminRoute>
         }
       />
+
+    <Route
+      path="/admin/alunos/novo"
+      element={
+        <AdminRoute>
+          <CreateStudentPage />
+        </AdminRoute>
+      }
+    />
 
       <Route
         path="/admin/exercicios"

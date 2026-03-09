@@ -36,6 +36,29 @@ const StudentWorkoutPage = () => {
   const [startingWorkout, setStartingWorkout] = useState(false);
   const [finishingWorkout, setFinishingWorkout] = useState(false);
 
+
+  const toggleExercise = async (exerciseId) => {
+
+    if (!activeSession) return;
+
+    try {
+
+      await supabase
+        .from("workout_exercise_logs")
+        .upsert({
+          session_id: activeSession.id,
+          exercise_id: exerciseId,
+          completed: true,
+          completed_at: new Date().toISOString()
+        });
+
+    } catch (err) {
+
+      console.error("Erro ao marcar exercício:", err);
+
+    }
+
+  };
   // Fetch workout from view
   const fetchWorkout = async () => {
     setLoading(true);
@@ -97,61 +120,98 @@ const StudentWorkoutPage = () => {
   const workoutTitle = workoutData[0]?.workout_title || 'Meu Treino';
 
   // Start workout - create session
-  const handleStartWorkout = async () => {
-    if (!user || !workoutData.length) return;
+const handleStartWorkout = async () => {
+  if (!user || !workoutData.length) return;
 
-    setStartingWorkout(true);
-    try {
-      const workoutId = workoutData[0]?.workout_id;
-      
-      const { data, error: insertError } = await supabase
-        .from('workout_sessions')
-        .insert({
+  setStartingWorkout(true);
+
+  try {
+    const workoutId = workoutData[0]?.workout_id;
+    const today = new Date().toISOString().split("T")[0];
+
+    // 1️⃣ verificar se já existe sessão hoje
+    const { data: existingSession, error: checkError } = await supabase
+      .from("workout_sessions")
+      .select("*")
+      .eq("student_id", user.id)
+      .eq("workout_id", workoutId)
+      .eq("session_date", today)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+
+    // 2️⃣ se já existir → reutilizar
+    if (existingSession) {
+      setActiveSession(existingSession);
+      toast.success("Treino retomado!");
+      return;
+    }
+
+    // 3️⃣ se não existir → criar sessão
+    const { data, error } = await supabase
+      .from("workout_sessions")
+      .insert([
+        {
           student_id: user.id,
           workout_id: workoutId,
-          session_date: new Date().toISOString().split('T')[0],
-          completed: false
-        })
-        .select()
-        .single();
+          session_date: today,
+          started_at: new Date().toISOString(),
+          status: "active",
+          finished: false
+        }
+      ])
+      .select()
+      .single();
 
-      if (insertError) throw insertError;
+    if (error) throw error;
 
-      setActiveSession(data);
-      toast.success('Treino iniciado!');
-    } catch (err) {
-      console.error('Erro ao iniciar treino:', err);
-      toast.error(err.message || 'Erro ao iniciar treino');
-    } finally {
-      setStartingWorkout(false);
-    }
-  };
+    setActiveSession(data);
+    toast.success("Treino iniciado!");
+
+  } catch (err) {
+    console.error("Erro ao iniciar treino:", err);
+    toast.error(err.message || "Erro ao iniciar treino");
+  } finally {
+    setStartingWorkout(false);
+  }
+};
 
   // Finish workout - update session
-  const handleFinishWorkout = async () => {
-    if (!activeSession) return;
+    const handleFinishWorkout = async () => {
 
-    setFinishingWorkout(true);
-    try {
-      const { error: updateError } = await supabase
-        .from('workout_sessions')
-        .update({ 
-          completed: true,
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', activeSession.id);
+      if (!activeSession) return;
 
-      if (updateError) throw updateError;
+      setFinishingWorkout(true);
 
-      setActiveSession(null);
-      toast.success('Treino concluído! Parabéns!');
-    } catch (err) {
-      console.error('Erro ao finalizar treino:', err);
-      toast.error(err.message || 'Erro ao finalizar treino');
-    } finally {
-      setFinishingWorkout(false);
-    }
-  };
+      try {
+
+        const { error: updateError } = await supabase
+          .from("workout_sessions")
+          .update({
+            completed: true,
+            completed_at: new Date().toISOString(),
+            finished_at: new Date().toISOString(),
+            status: "finished",
+            finished: true
+          })
+          .eq("id", activeSession.id);
+
+        if (updateError) throw updateError;
+
+        setActiveSession(null);
+        toast.success("Treino concluído!");
+
+      } catch (err) {
+
+        console.error("Erro ao finalizar treino:", err);
+        toast.error(err.message || "Erro ao finalizar treino");
+
+      } finally {
+
+        setFinishingWorkout(false);
+
+      }
+    };
 
   // Handle logout
   const handleLogout = async () => {
@@ -323,7 +383,10 @@ const StudentWorkoutPage = () => {
 
               {/* Empty State */}
               {workoutData.length === 0 && (
-                <Card className="bg-card border-border">
+                <Card
+                  className="bg-card border-border cursor-pointer"
+                  onClick={() => toggleExercise(exercise.exercise_id)}
+                  >
                   <CardContent className="py-12 text-center">
                     <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                     <p className="text-muted-foreground">
