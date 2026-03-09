@@ -11,7 +11,11 @@ import {
   Menu,
   X,
   ChevronRight,
-  Zap
+  ChevronDown,
+  Zap,
+  ClipboardList,
+  UserCog,
+  Library
 } from "lucide-react";
 
 const navItems = [
@@ -26,9 +30,25 @@ const navItems = [
     icon: Users,
   },
   {
-    title: "Exercícios",
-    href: "/admin/exercicios",
-    icon: Dumbbell,
+    title: "Treinos",
+    icon: ClipboardList,
+    children: [
+      {
+        title: "Exercícios",
+        href: "/admin/treinos/exercicios",
+        icon: Library,
+      },
+      {
+        title: "Treinos Padrão",
+        href: "/admin/treinos/templates",
+        icon: ClipboardList,
+      },
+      {
+        title: "Treinos Personalizados",
+        href: "/admin/treinos/personalizados",
+        icon: UserCog,
+      },
+    ],
   },
 ];
 
