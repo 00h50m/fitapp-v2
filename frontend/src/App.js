@@ -16,6 +16,14 @@ import AdminAlunosPage from "@/pages/admin/AdminAlunosPage";
 import CreateStudentPage from "@/pages/admin/CreateStudentPage";
 import ExerciciosPage from "@/pages/admin/ExerciciosPage";
 
+// Treinos Pages
+import { 
+  ExercisesPage as TreinosExercisesPage, 
+  WorkoutsPage, 
+  WorkoutEditorPage, 
+  CustomWorkoutsPage 
+} from "@/pages/admin/treinos";
+
 function AppRoutes() {
   return (
     <Routes>
@@ -63,6 +71,40 @@ function AppRoutes() {
         element={
           <AdminRoute>
             <ExerciciosPage />
+          </AdminRoute>
+        }
+      />
+
+      {/* TREINOS SECTION */}
+      <Route
+        path="/admin/treinos/exercicios"
+        element={
+          <AdminRoute>
+            <TreinosExercisesPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/treinos/templates"
+        element={
+          <AdminRoute>
+            <WorkoutsPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/treinos/editor/:id"
+        element={
+          <AdminRoute>
+            <WorkoutEditorPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/treinos/personalizados"
+        element={
+          <AdminRoute>
+            <CustomWorkoutsPage />
           </AdminRoute>
         }
       />
