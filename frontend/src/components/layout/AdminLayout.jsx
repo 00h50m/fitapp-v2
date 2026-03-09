@@ -54,12 +54,27 @@ const navItems = [
 
 export const AdminSidebar = ({ isOpen, onToggle, onClose }) => {
   const location = useLocation();
+  const [expandedMenus, setExpandedMenus] = useState(["Treinos"]);
 
   // Close sidebar handler for mobile/tablet
   const handleCloseSidebar = () => {
     if (window.innerWidth < 1024) {
       onClose();
     }
+  };
+
+  // Toggle submenu
+  const toggleSubmenu = (title) => {
+    setExpandedMenus(prev => 
+      prev.includes(title) 
+        ? prev.filter(t => t !== title)
+        : [...prev, title]
+    );
+  };
+
+  // Check if any child is active
+  const isChildActive = (children) => {
+    return children?.some(child => location.pathname.startsWith(child.href));
   };
 
   return (
@@ -116,6 +131,75 @@ export const AdminSidebar = ({ isOpen, onToggle, onClose }) => {
         <ScrollArea className="flex-1 py-4">
           <nav className="px-3 space-y-1">
             {navItems.map((item) => {
+              // Check if it's a submenu
+              if (item.children) {
+                const isExpanded = expandedMenus.includes(item.title);
+                const hasActiveChild = isChildActive(item.children);
+                
+                return (
+                  <div key={item.title} className="space-y-1">
+                    {/* Parent item */}
+                    <button
+                      onClick={() => toggleSubmenu(item.title)}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-3 rounded-xl w-full",
+                        "text-sm font-medium",
+                        "transition-all duration-200",
+                        hasActiveChild
+                          ? "text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      )}
+                    >
+                      <item.icon className={cn(
+                        "h-5 w-5 flex-shrink-0",
+                        hasActiveChild ? "text-primary" : "text-muted-foreground"
+                      )} />
+                      <span className="flex-1 text-left">{item.title}</span>
+                      <ChevronDown className={cn(
+                        "h-4 w-4 transition-transform duration-200",
+                        isExpanded && "rotate-180"
+                      )} />
+                    </button>
+                    
+                    {/* Children */}
+                    {isExpanded && (
+                      <div className="ml-4 pl-4 border-l border-border space-y-1">
+                        {item.children.map((child) => {
+                          const isActive = location.pathname === child.href ||
+                            location.pathname.startsWith(child.href + "/");
+                          
+                          return (
+                            <NavLink
+                              key={child.href}
+                              to={child.href}
+                              onClick={handleCloseSidebar}
+                              className={cn(
+                                "flex items-center gap-3 px-4 py-2.5 rounded-lg",
+                                "text-sm font-medium",
+                                "transition-all duration-200",
+                                isActive
+                                  ? "bg-primary/10 text-primary border border-primary/20"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                              )}
+                            >
+                              <child.icon className={cn(
+                                "h-4 w-4 flex-shrink-0",
+                                isActive ? "text-primary" : "text-muted-foreground"
+                              )} />
+                              <span className="flex-1">{child.title}</span>
+                              {isActive && (
+                                <ChevronRight className="h-4 w-4 text-primary/60" />
+                              )}
+                            </NavLink>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // Regular menu item
               const isActive = location.pathname === item.href || 
                 (item.href !== "/admin" && location.pathname.startsWith(item.href));
               
