@@ -28,20 +28,16 @@ export const AdminRoute = ({ children }) => {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  if (!isAdmin) return <Navigate to="/" replace />;
+if (!isAdmin) return <Navigate to="/app" replace />;
 
   return children;
 };
 
 // 🌎 Rota pública
 export const PublicRoute = ({ children }) => {
-  const { user, loading, isAdmin } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) return <FullScreenLoader />;
-
-  if (user) {
-    return <Navigate to={isAdmin ? "/admin" : "/"} replace />;
-  }
 
   return children;
 };

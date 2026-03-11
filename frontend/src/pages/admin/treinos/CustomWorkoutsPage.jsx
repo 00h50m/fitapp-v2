@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,8 +45,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { mockCustomWorkouts } from "@/data/mockTreinosData";
+//import { mockCustomWorkouts } from "@/data/mockTreinosData";
 import AssignWorkoutModal from "@/components/treinos/AssignWorkoutModal";
+import {
+  getStudentWorkouts,
+  createStudentWorkout,
+  updateStudentWorkout,
+  deleteStudentWorkout
+} from "@/services/studentWorkoutService";
 
 // Status badge styles
 const statusStyles = {
@@ -68,10 +74,29 @@ const statusStyles = {
 };
 
 const CustomWorkoutsPage = () => {
-  const [customWorkouts, setCustomWorkouts] = useState(mockCustomWorkouts);
+
+  const [customWorkouts, setCustomWorkouts] = useState([]);
+  const [editingWorkout, setEditingWorkout] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [deleteWorkout, setDeleteWorkout] = useState(null);
+
+  useEffect(() => {
+    loadWorkouts();
+  }, []);
+
+  async function loadWorkouts() {
+    try {
+      const data = await getStudentWorkouts();
+      setCustomWorkouts(data);
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao carregar treinos");
+    }
+  }
+
+ // const [showAssignModal, setShowAssignModal] = useState(false);
+ // const [deleteWorkout, setDeleteWorkout] = useState(null);
 
   // Filter workouts
   const filteredWorkouts = customWorkouts.filter(w => 
@@ -89,18 +114,61 @@ const CustomWorkoutsPage = () => {
   };
 
   // Handle save new assignment
-  const handleSaveAssignment = (data) => {
-    setCustomWorkouts(prev => [data, ...prev]);
-    toast.success("Treino atribuído com sucesso!");
-  };
+    const handleSaveAssignment = async (data) => {
+      try {
+
+        if (editingWorkout) {
+
+          const updated = await updateStudentWorkout(editingWorkout.id, data);
+
+          setCustomWorkouts(prev =>
+            prev.map(w => w.id === updated.id ? updated : w)
+          );
+
+          toast.success("Treino atualizado!");
+
+        } else {
+
+          const created = await createStudentWorkout(data);
+
+          setCustomWorkouts(prev => [created, ...prev]);
+
+          toast.success("Treino atribuído!");
+
+        }
+
+        setEditingWorkout(null);
+
+      } catch (error) {
+        console.error(error);
+        toast.error("Erro ao salvar treino");
+      }
+    };
 
   // Handle delete
-  const handleDelete = () => {
-    if (deleteWorkout) {
-      setCustomWorkouts(prev => prev.filter(w => w.id !== deleteWorkout.id));
-      toast.success("Atribuição excluída com sucesso!");
+  const handleDelete = async () => {
+
+    if (!deleteWorkout) return;
+
+    try {
+
+      await deleteStudentWorkout(deleteWorkout.id);
+
+      setCustomWorkouts(prev =>
+        prev.filter(w => w.id !== deleteWorkout.id)
+      );
+
+      toast.success("Treino excluído!");
+
       setDeleteWorkout(null);
+
+    } catch (error) {
+
+      console.error(error);
+      toast.error("Erro ao excluir treino");
+
     }
+
   };
 
   // Stats
@@ -229,7 +297,13 @@ const CustomWorkoutsPage = () => {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="bg-card border-border">
-                              <DropdownMenuItem className="gap-2 cursor-pointer">
+                              <DropdownMenuItem
+                                className="gap-2 cursor-pointer"
+                                onClick={() => {
+                                  setEditingWorkout(workout);
+                                  setShowAssignModal(true);
+                                }}
+                              >
                                 <Edit className="h-4 w-4" />
                                 Editar
                               </DropdownMenuItem>
@@ -264,7 +338,11 @@ const CustomWorkoutsPage = () => {
       {/* Assign Workout Modal */}
       <AssignWorkoutModal
         isOpen={showAssignModal}
-        onClose={() => setShowAssignModal(false)}
+        workout={editingWorkout}
+        onClose={() => {
+          setShowAssignModal(false);
+          setEditingWorkout(null);
+        }}
         onSave={handleSaveAssignment}
       />
 

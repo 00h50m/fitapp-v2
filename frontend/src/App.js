@@ -135,7 +135,7 @@ function AppRoutes() {
 import { useAuth } from "@/contexts/AuthContext";
 
 const RedirectByRole = () => {
-  const { isAdmin, loading } = useAuth();
+  const { user, isAdmin, loading } = useAuth();
 
   if (loading) {
     return (
@@ -145,10 +145,17 @@ const RedirectByRole = () => {
     );
   }
 
+  // 🔐 se NÃO está logado → login
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // 👑 admin
   if (isAdmin) {
     return <Navigate to="/admin" replace />;
   }
 
+  // 👤 aluno
   return <Navigate to="/app" replace />;
 };
 

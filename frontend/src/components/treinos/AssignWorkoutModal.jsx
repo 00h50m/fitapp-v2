@@ -23,7 +23,7 @@ import { Save, X, User, ClipboardList } from "lucide-react";
 const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     student_id: "",
-    workout_id: "",
+    template_id: "",
     start_date: new Date().toISOString().split("T")[0],
     end_date: "",
   });
@@ -36,11 +36,11 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
     e.preventDefault();
     
     const student = mockStudents.find(s => s.id === formData.student_id);
-    const workout = mockWorkoutTemplates.find(w => w.id === formData.workout_id);
+    const workout = mockWorkoutTemplates.find(w => w.id === formData.template_id);
     
     onSave({
       ...formData,
-      id: `cw_${Date.now()}`,
+    //  id: `cw_${Date.now()}`,
       student_name: student?.name || "",
       workout_name: workout?.name || "",
       status: "active",
@@ -50,7 +50,7 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
     // Reset form
     setFormData({
       student_id: "",
-      workout_id: "",
+      template_id: "",
       start_date: new Date().toISOString().split("T")[0],
       end_date: "",
     });
@@ -104,8 +104,8 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
               Treino *
             </Label>
             <Select
-              value={formData.workout_id}
-              onValueChange={(value) => handleChange("workout_id", value)}
+              value={formData.template_id}
+              onValueChange={(value) => handleChange("template_id", value)}
               required
             >
               <SelectTrigger className="bg-muted border-border">

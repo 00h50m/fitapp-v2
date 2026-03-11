@@ -9,71 +9,53 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  console.log("PROFILE:", profile);
-console.log("ROLE:", profile?.role);
-
-  // 🔹 Função única responsável por carregar profile
   const loadProfile = async (userId) => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
 
-      if (error) {
-        console.error("Erro ao carregar profile:", error);
-        setProfile(null);
-        return;
-      }
-
-      setProfile(data);
-    } catch (err) {
-      console.error("Erro inesperado ao buscar profile:", err);
+    if (error) {
+      console.error("Erro ao carregar profile:", error);
       setProfile(null);
+      return;
     }
+
+    setProfile(data);
   };
 
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
+    const initAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
 
-        setSession(session);
+      setSession(session);
+      setUser(session?.user ?? null);
 
-        if (session?.user) {
-          setUser(session.user);
-          await loadProfile(session.user.id);
-        }
-      } catch (error) {
-        console.error("Erro ao inicializar auth:", error);
-      } finally {
-        setLoading(false);
+      if (session?.user) {
+        await loadProfile(session.user.id);
       }
+
+      setLoading(false);
     };
 
-    initialize();
+    initAuth();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event, session) => {
         setSession(session);
-        setLoading(true);
+        setUser(session?.user ?? null);
 
         if (session?.user) {
-          setUser(session.user);
           await loadProfile(session.user.id);
         } else {
-          setUser(null);
           setProfile(null);
         }
-
-        setLoading(false);
       }
     );
 
-    return () => {
-      listener.subscription.unsubscribe();
-    };
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   const login = async (email, password) => {
@@ -82,19 +64,16 @@ console.log("ROLE:", profile?.role);
       password,
     });
 
-    if (error) {
-      console.error("Erro no login:", error);
-      throw error;
-    }
+    if (error) throw error;
   };
 
   const logout = async () => {
     await supabase.auth.signOut();
   };
 
-  // 🔥 Fonte verdadeira de permissão: booleano
-    const isAdmin = profile?.role === "admin";
-    const isStudent = profile?.role === "student";
+  const isAdmin = profile?.role === "admin";
+  const isStudent = profile?.role === "student";
+  const isAuthenticated = !!user;
 
   return (
     <AuthContext.Provider
@@ -107,6 +86,7 @@ console.log("ROLE:", profile?.role);
         logout,
         isAdmin,
         isStudent,
+        isAuthenticated,
       }}
     >
       {children}
