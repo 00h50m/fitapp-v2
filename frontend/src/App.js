@@ -1,13 +1,14 @@
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute, AdminRoute, PublicRoute } from "@/components/auth/ProtectedRoutes";
 import { Loader2 } from "lucide-react";
 
 // Pages
 import LoginPage from "@/pages/LoginPage";
 import StudentDashboard from "@/pages/student/StudentDashboard";
+import StudentWorkoutsPage from "@/pages/student/StudentWorkoutsPage";
 import StudentWorkoutPage from "@/pages/student/StudentWorkoutPage";
 
 // Admin Pages
@@ -17,123 +18,14 @@ import CreateStudentPage from "@/pages/admin/CreateStudentPage";
 import ExerciciosPage from "@/pages/admin/ExerciciosPage";
 
 // Treinos Pages
-import { 
-  ExercisesPage as TreinosExercisesPage, 
-  WorkoutsPage, 
-  WorkoutEditorPage, 
-  CustomWorkoutsPage 
+import {
+  ExercisesPage as TreinosExercisesPage,
+  WorkoutsPage,
+  WorkoutEditorPage,
+  CustomWorkoutsPage,
 } from "@/pages/admin/treinos";
 
-function AppRoutes() {
-  return (
-    <Routes>
-
-      {/* PUBLIC */}
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        }
-      />
-
-      {/* ADMIN */}
-      <Route
-        path="/admin"
-        element={
-          <AdminRoute>
-            <DashboardPage />
-          </AdminRoute>
-        }
-      />
-
-      <Route
-        path="/admin/alunos"
-        element={
-          <AdminRoute>
-            <AdminAlunosPage />
-          </AdminRoute>
-        }
-      />
-
-    <Route
-      path="/admin/alunos/novo"
-      element={
-        <AdminRoute>
-          <CreateStudentPage />
-        </AdminRoute>
-      }
-    />
-
-      <Route
-        path="/admin/exercicios"
-        element={
-          <AdminRoute>
-            <ExerciciosPage />
-          </AdminRoute>
-        }
-      />
-
-      {/* TREINOS SECTION */}
-      <Route
-        path="/admin/treinos/exercicios"
-        element={
-          <AdminRoute>
-            <TreinosExercisesPage />
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/treinos/templates"
-        element={
-          <AdminRoute>
-            <WorkoutsPage />
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/treinos/editor/:id"
-        element={
-          <AdminRoute>
-            <WorkoutEditorPage />
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/admin/treinos/personalizados"
-        element={
-          <AdminRoute>
-            <CustomWorkoutsPage />
-          </AdminRoute>
-        }
-      />
-
-      {/* STUDENT */}
-      <Route
-        path="/app"
-        element={
-          <ProtectedRoute>
-            <StudentWorkoutPage />
-          </ProtectedRoute>
-        }
-      />
-
-      {/* HOME → REDIRECT INTELIGENTE */}
-      <Route
-        path="/"
-        element={<RedirectByRole />}
-      />
-
-      {/* FALLBACK */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-
-    </Routes>
-  );
-}
-
-import { useAuth } from "@/contexts/AuthContext";
-
+// Redirect inteligente por role
 const RedirectByRole = () => {
   const { user, isAdmin, loading } = useAuth();
 
@@ -145,19 +37,50 @@ const RedirectByRole = () => {
     );
   }
 
-  // 🔐 se NÃO está logado → login
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // 👑 admin
-  if (isAdmin) {
-    return <Navigate to="/admin" replace />;
-  }
-
-  // 👤 aluno
-  return <Navigate to="/app" replace />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (isAdmin) return <Navigate to="/admin" replace />;
+  return <Navigate to="/student" replace />;
 };
+
+function AppRoutes() {
+  return (
+    <Routes>
+      {/* PUBLIC */}
+      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+
+      {/* ── ADMIN ─────────────────────────────────────────────── */}
+      <Route path="/admin" element={<AdminRoute><DashboardPage /></AdminRoute>} />
+      <Route path="/admin/alunos" element={<AdminRoute><AdminAlunosPage /></AdminRoute>} />
+      <Route path="/admin/alunos/novo" element={<AdminRoute><CreateStudentPage /></AdminRoute>} />
+      <Route path="/admin/exercicios" element={<AdminRoute><ExerciciosPage /></AdminRoute>} />
+
+      {/* Treinos */}
+      <Route path="/admin/treinos/exercicios" element={<AdminRoute><TreinosExercisesPage /></AdminRoute>} />
+      <Route path="/admin/treinos/templates" element={<AdminRoute><WorkoutsPage /></AdminRoute>} />
+      <Route path="/admin/treinos/editor/:id" element={<AdminRoute><WorkoutEditorPage /></AdminRoute>} />
+      <Route path="/admin/treinos/personalizados" element={<AdminRoute><CustomWorkoutsPage /></AdminRoute>} />
+
+      {/* ── STUDENT ───────────────────────────────────────────── */}
+      {/* /student → verifica treino ativo e redireciona */}
+      <Route path="/student" element={<ProtectedRoute><StudentDashboard /></ProtectedRoute>} />
+
+      {/* /student/workouts → lista de todos os treinos */}
+      <Route path="/student/workouts" element={<ProtectedRoute><StudentWorkoutsPage /></ProtectedRoute>} />
+
+      {/* /student/workout/:id → execução do treino */}
+      <Route path="/student/workout/:id" element={<ProtectedRoute><StudentWorkoutPage /></ProtectedRoute>} />
+
+      {/* Compatibilidade com rota antiga /app */}
+      <Route path="/app" element={<Navigate to="/student" replace />} />
+
+      {/* HOME → redirect por role */}
+      <Route path="/" element={<RedirectByRole />} />
+
+      {/* FALLBACK */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
 
 function App() {
   return (
@@ -167,12 +90,7 @@ function App() {
           <AppRoutes />
         </AuthProvider>
       </BrowserRouter>
-
-      <Toaster
-        position="top-center"
-        richColors
-        closeButton
-      />
+      <Toaster position="top-center" richColors closeButton />
     </div>
   );
 }
