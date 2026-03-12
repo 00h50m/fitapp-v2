@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,47 +11,65 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { 
-  muscleGroupOptions, 
-  equipmentOptions, 
-  difficultyOptions 
-} from "@/data/mockTreinosData";
-import { Save, X, Video } from "lucide-react";
+import { Save, X, Video, Loader2 } from "lucide-react";
+import { createExercise, updateExercise } from "@/services/exercisesService";
+import { toast } from "sonner";
 
 const ExerciseFormModal = ({ isOpen, onClose, exercise, onSave }) => {
   const isEditing = !!exercise;
-  
+
   const [formData, setFormData] = useState({
-    name: exercise?.name || "",
-    description: exercise?.description || "",
-    video_url: exercise?.video_url || "",
-    muscle_group: exercise?.muscle_group || "",
-    equipment: exercise?.equipment || "",
-    difficulty: exercise?.difficulty || "",
+    title: "",
+    description: "",
+    video_url: "",
   });
+  const [saving, setSaving] = useState(false);
+
+  // Preenche o form ao abrir em modo edição
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        title: exercise?.title || "",
+        description: exercise?.default_description || "",
+        video_url: exercise?.video_url || "",
+      });
+    }
+  }, [isOpen, exercise]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSave({
-      ...formData,
-      id: exercise?.id || `ex_${Date.now()}`,
-      created_at: exercise?.created_at || new Date().toISOString(),
-    });
-    onClose();
+
+    if (!formData.title.trim()) {
+      toast.error("Nome do exercício é obrigatório");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let saved;
+
+      if (isEditing) {
+        saved = await updateExercise(exercise.id, formData);
+        toast.success("Exercício atualizado!");
+      } else {
+        saved = await createExercise(formData);
+        toast.success("Exercício criado!");
+      }
+
+      onSave(saved);
+      onClose();
+    } catch (err) {
+      console.error("Erro ao salvar exercício:", err);
+      toast.error("Erro ao salvar: " + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // Extract YouTube embed URL
   const getEmbedUrl = (url) => {
     if (!url) return "";
     if (url.includes("embed")) return url;
@@ -61,7 +79,7 @@ const ExerciseFormModal = ({ isOpen, onClose, exercise, onSave }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-display text-foreground">
             {isEditing ? "Editar Exercício" : "Novo Exercício"}
@@ -72,20 +90,18 @@ const ExerciseFormModal = ({ isOpen, onClose, exercise, onSave }) => {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">Nome do Exercício *</Label>
+            <Label htmlFor="title">Nome do Exercício *</Label>
             <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => handleChange("name", e.target.value)}
+              id="title"
+              value={formData.title}
+              onChange={(e) => handleChange("title", e.target.value)}
               placeholder="Ex: Supino Reto com Barra"
               className="bg-muted border-border"
               required
             />
           </div>
 
-          {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="description">Descrição</Label>
             <Textarea
@@ -97,7 +113,6 @@ const ExerciseFormModal = ({ isOpen, onClose, exercise, onSave }) => {
             />
           </div>
 
-          {/* Video URL */}
           <div className="space-y-2">
             <Label htmlFor="video_url">URL do Vídeo (YouTube)</Label>
             <Input
@@ -107,8 +122,7 @@ const ExerciseFormModal = ({ isOpen, onClose, exercise, onSave }) => {
               placeholder="https://www.youtube.com/watch?v=..."
               className="bg-muted border-border"
             />
-            
-            {/* Video Preview */}
+
             {formData.video_url && (
               <div className="mt-3">
                 <Label className="text-xs text-muted-foreground flex items-center gap-1 mb-2">
@@ -128,77 +142,17 @@ const ExerciseFormModal = ({ isOpen, onClose, exercise, onSave }) => {
             )}
           </div>
 
-          {/* Muscle Group, Equipment, Difficulty */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Muscle Group */}
-            <div className="space-y-2">
-              <Label>Grupo Muscular *</Label>
-              <Select
-                value={formData.muscle_group}
-                onValueChange={(value) => handleChange("muscle_group", value)}
-              >
-                <SelectTrigger className="bg-muted border-border">
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {muscleGroupOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Equipment */}
-            <div className="space-y-2">
-              <Label>Equipamento *</Label>
-              <Select
-                value={formData.equipment}
-                onValueChange={(value) => handleChange("equipment", value)}
-              >
-                <SelectTrigger className="bg-muted border-border">
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {equipmentOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Difficulty */}
-            <div className="space-y-2">
-              <Label>Dificuldade *</Label>
-              <Select
-                value={formData.difficulty}
-                onValueChange={(value) => handleChange("difficulty", value)}
-              >
-                <SelectTrigger className="bg-muted border-border">
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {difficultyOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
           <DialogFooter className="gap-2 pt-4">
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
               <X className="h-4 w-4 mr-2" />
               Cancelar
             </Button>
-            <Button type="submit" variant="premium">
-              <Save className="h-4 w-4 mr-2" />
-              {isEditing ? "Salvar Alterações" : "Criar Exercício"}
+            <Button type="submit" variant="premium" disabled={saving}>
+              {saving ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</>
+              ) : (
+                <><Save className="h-4 w-4 mr-2" />{isEditing ? "Salvar Alterações" : "Criar Exercício"}</>
+              )}
             </Button>
           </DialogFooter>
         </form>

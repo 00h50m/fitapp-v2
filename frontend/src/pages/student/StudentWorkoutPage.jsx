@@ -36,13 +36,9 @@ const StudentWorkoutPage = () => {
   const [startingWorkout, setStartingWorkout] = useState(false);
   const [finishingWorkout, setFinishingWorkout] = useState(false);
 
-
   const toggleExercise = async (exerciseId) => {
-
     if (!activeSession) return;
-
     try {
-
       await supabase
         .from("workout_exercise_logs")
         .upsert({
@@ -51,31 +47,26 @@ const StudentWorkoutPage = () => {
           completed: true,
           completed_at: new Date().toISOString()
         });
-
     } catch (err) {
-
       console.error("Erro ao marcar exercício:", err);
-
     }
-
   };
-  // Fetch workout from view
+
   const fetchWorkout = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      // Fetch workout data from view
       const { data, error: fetchError } = await supabase
         .from('v_student_workout')
         .select('*')
+        .eq('student_id', user.id)
         .order('block_order', { ascending: true })
         .order('exercise_order', { ascending: true });
 
       if (fetchError) throw fetchError;
       setWorkoutData(data || []);
 
-      // Check for active session
       const { data: sessionData, error: sessionError } = await supabase
         .from('workout_sessions')
         .select('*')
@@ -83,7 +74,7 @@ const StudentWorkoutPage = () => {
         .eq('completed', false)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!sessionError && sessionData) {
         setActiveSession(sessionData);
@@ -102,7 +93,6 @@ const StudentWorkoutPage = () => {
     }
   }, [user]);
 
-  // Group exercises by block
   const groupedByBlock = workoutData.reduce((acc, item) => {
     const blockKey = item.block_order || 0;
     if (!acc[blockKey]) {
@@ -119,101 +109,83 @@ const StudentWorkoutPage = () => {
   const blocks = Object.values(groupedByBlock).sort((a, b) => a.block_order - b.block_order);
   const workoutTitle = workoutData[0]?.workout_title || 'Meu Treino';
 
-  // Start workout - create session
-const handleStartWorkout = async () => {
-  if (!user || !workoutData.length) return;
+  const handleStartWorkout = async () => {
+    if (!user || !workoutData.length) return;
+    setStartingWorkout(true);
 
-  setStartingWorkout(true);
+    try {
+      const workoutId = workoutData[0]?.workout_id;
+      const today = new Date().toISOString().split("T")[0];
 
-  try {
-    const workoutId = workoutData[0]?.workout_id;
-    const today = new Date().toISOString().split("T")[0];
+      const { data: existingSession, error: checkError } = await supabase
+        .from("workout_sessions")
+        .select("*")
+        .eq("student_id", user.id)
+        .eq("workout_id", workoutId)
+        .eq("session_date", today)
+        .maybeSingle();
 
-    // 1️⃣ verificar se já existe sessão hoje
-    const { data: existingSession, error: checkError } = await supabase
-      .from("workout_sessions")
-      .select("*")
-      .eq("student_id", user.id)
-      .eq("workout_id", workoutId)
-      .eq("session_date", today)
-      .maybeSingle();
+      if (checkError) throw checkError;
 
-    if (checkError) throw checkError;
+      if (existingSession) {
+        setActiveSession(existingSession);
+        toast.success("Treino retomado!");
+        return;
+      }
 
-    // 2️⃣ se já existir → reutilizar
-    if (existingSession) {
-      setActiveSession(existingSession);
-      toast.success("Treino retomado!");
-      return;
-    }
-
-    // 3️⃣ se não existir → criar sessão
-    const { data, error } = await supabase
-      .from("workout_sessions")
-      .insert([
-        {
+      const { data, error } = await supabase
+        .from("workout_sessions")
+        .insert([{
           student_id: user.id,
           workout_id: workoutId,
           session_date: today,
           started_at: new Date().toISOString(),
           status: "active",
           finished: false
-        }
-      ])
-      .select()
-      .single();
+        }])
+        .select()
+        .single();
 
-    if (error) throw error;
+      if (error) throw error;
 
-    setActiveSession(data);
-    toast.success("Treino iniciado!");
+      setActiveSession(data);
+      toast.success("Treino iniciado!");
+    } catch (err) {
+      console.error("Erro ao iniciar treino:", err);
+      toast.error(err.message || "Erro ao iniciar treino");
+    } finally {
+      setStartingWorkout(false);
+    }
+  };
 
-  } catch (err) {
-    console.error("Erro ao iniciar treino:", err);
-    toast.error(err.message || "Erro ao iniciar treino");
-  } finally {
-    setStartingWorkout(false);
-  }
-};
+  const handleFinishWorkout = async () => {
+    if (!activeSession) return;
+    setFinishingWorkout(true);
 
-  // Finish workout - update session
-    const handleFinishWorkout = async () => {
+    try {
+      const { error: updateError } = await supabase
+        .from("workout_sessions")
+        .update({
+          completed: true,
+          completed_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
+          status: "finished",
+          finished: true
+        })
+        .eq("id", activeSession.id);
 
-      if (!activeSession) return;
+      if (updateError) throw updateError;
 
-      setFinishingWorkout(true);
+      setActiveSession(null);
+      toast.success("Treino concluído!");
+    } catch (err) {
+      console.error("Erro ao finalizar treino:", err);
+      toast.error(err.message || "Erro ao finalizar treino");
+    } finally {
+      setFinishingWorkout(false);
+    }
+  };
 
-      try {
-
-        const { error: updateError } = await supabase
-          .from("workout_sessions")
-          .update({
-            completed: true,
-            completed_at: new Date().toISOString(),
-            finished_at: new Date().toISOString(),
-            status: "finished",
-            finished: true
-          })
-          .eq("id", activeSession.id);
-
-        if (updateError) throw updateError;
-
-        setActiveSession(null);
-        toast.success("Treino concluído!");
-
-      } catch (err) {
-
-        console.error("Erro ao finalizar treino:", err);
-        toast.error(err.message || "Erro ao finalizar treino");
-
-      } finally {
-
-        setFinishingWorkout(false);
-
-      }
-    };
-
-  // Handle logout
   const handleLogout = async () => {
     try {
       await logout();
@@ -247,7 +219,7 @@ const handleStartWorkout = async () => {
 
       <MobileContent className="pb-24">
         <div className="space-y-4 animate-fade-in">
-          {/* Loading */}
+
           {loading && (
             <div className="py-12 text-center">
               <Loader2 className="h-8 w-8 mx-auto text-primary animate-spin mb-4" />
@@ -255,7 +227,6 @@ const handleStartWorkout = async () => {
             </div>
           )}
 
-          {/* Error */}
           {error && !loading && (
             <Card className="bg-card border-destructive/30">
               <CardContent className="py-8 text-center">
@@ -270,10 +241,8 @@ const handleStartWorkout = async () => {
             </Card>
           )}
 
-          {/* Workout Content */}
           {!loading && !error && (
             <>
-              {/* Workout Header */}
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -289,17 +258,13 @@ const handleStartWorkout = async () => {
                     {blocks.length} blocos • {workoutData.length} exercícios
                   </p>
                 </div>
-                {!loading && (
-                  <Button variant="ghost" size="icon" onClick={fetchWorkout}>
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-                )}
+                <Button variant="ghost" size="icon" onClick={fetchWorkout}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
               </div>
 
-              {/* Blocks */}
-              {blocks.map((block, blockIndex) => (
+              {blocks.map((block) => (
                 <div key={block.block_order} className="space-y-3">
-                  {/* Block Header */}
                   <div className="flex items-center gap-2 pt-2">
                     <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
                       <Layers className="h-4 w-4 text-primary" />
@@ -312,15 +277,13 @@ const handleStartWorkout = async () => {
                     </Badge>
                   </div>
 
-                  {/* Exercises in Block */}
                   <div className="space-y-2">
                     {block.exercises.map((exercise, exIndex) => (
-                      <Card 
+                      <Card
                         key={`${block.block_order}-${exercise.exercise_order}-${exIndex}`}
                         className="bg-card border-border"
                       >
                         <CardContent className="p-4">
-                          {/* Exercise Name */}
                           <div className="flex items-start justify-between gap-2 mb-3">
                             <div className="flex-1 min-w-0">
                               <p className="font-semibold text-foreground">
@@ -332,7 +295,6 @@ const handleStartWorkout = async () => {
                             </Badge>
                           </div>
 
-                          {/* Stats Row */}
                           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mb-3">
                             {exercise.sets && (
                               <div className="flex items-center gap-1">
@@ -346,18 +308,17 @@ const handleStartWorkout = async () => {
                                 <span>{exercise.reps} reps</span>
                               </div>
                             )}
-                            {exercise.rest && (
+                            {exercise.rest_seconds && (
                               <div className="flex items-center gap-1">
                                 <Clock className="h-3.5 w-3.5" />
-                                <span>{exercise.rest}s descanso</span>
+                                <span>{exercise.rest_seconds}s descanso</span>
                               </div>
                             )}
                           </div>
 
-                          {/* Video Link */}
-                          {exercise.video && (
+                          {exercise.video_url && (
                             <a
-                              href={exercise.video}
+                              href={exercise.video_url}
                               target="_blank"
                               rel="noopener noreferrer"
                               className={cn(
@@ -381,12 +342,8 @@ const handleStartWorkout = async () => {
                 </div>
               ))}
 
-              {/* Empty State */}
               {workoutData.length === 0 && (
-                <Card
-                  className="bg-card border-border cursor-pointer"
-                  onClick={() => toggleExercise(exercise.exercise_id)}
-                  >
+                <Card className="bg-card border-border">
                   <CardContent className="py-12 text-center">
                     <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                     <p className="text-muted-foreground">
@@ -400,7 +357,6 @@ const handleStartWorkout = async () => {
         </div>
       </MobileContent>
 
-      {/* Fixed Footer */}
       {!loading && !error && workoutData.length > 0 && (
         <MobileFooter>
           {!activeSession ? (
@@ -412,15 +368,9 @@ const handleStartWorkout = async () => {
               disabled={startingWorkout}
             >
               {startingWorkout ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Iniciando...
-                </>
+                <><Loader2 className="h-5 w-5 animate-spin" />Iniciando...</>
               ) : (
-                <>
-                  <Play className="h-5 w-5" />
-                  Iniciar Treino
-                </>
+                <><Play className="h-5 w-5" />Iniciar Treino</>
               )}
             </Button>
           ) : (
@@ -432,15 +382,9 @@ const handleStartWorkout = async () => {
               disabled={finishingWorkout}
             >
               {finishingWorkout ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Finalizando...
-                </>
+                <><Loader2 className="h-5 w-5 animate-spin" />Finalizando...</>
               ) : (
-                <>
-                  <CheckCircle2 className="h-5 w-5" />
-                  Finalizar Treino
-                </>
+                <><CheckCircle2 className="h-5 w-5" />Finalizar Treino</>
               )}
             </Button>
           )}

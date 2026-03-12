@@ -1,8 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -29,87 +28,87 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { 
-  Dumbbell, 
-  Search, 
-  Plus, 
+import {
+  Dumbbell,
+  Search,
+  Plus,
   MoreHorizontal,
   Edit,
   Trash2,
-  Video
+  Video,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { 
-  mockExercises, 
-  getMuscleGroupLabel, 
-  getEquipmentLabel,
-  getDifficultyLabel 
-} from "@/data/mockTreinosData";
+import {
+  getExercises,
+  deleteExercise,
+} from "@/services/exercisesService";
 import ExerciseFormModal from "@/components/treinos/ExerciseFormModal";
 
-// Difficulty badge colors
-const difficultyColors = {
-  beginner: "bg-success/15 text-success border-success/30",
-  intermediate: "bg-warning/15 text-warning border-warning/30",
-  advanced: "bg-destructive/15 text-destructive border-destructive/30",
-};
-
-// Muscle group badge colors
-const muscleGroupColors = {
-  chest: "bg-red-500/15 text-red-400 border-red-500/30",
-  back: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  legs: "bg-purple-500/15 text-purple-400 border-purple-500/30",
-  shoulders: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  biceps: "bg-green-500/15 text-green-400 border-green-500/30",
-  triceps: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
-  core: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  cardio: "bg-pink-500/15 text-pink-400 border-pink-500/30",
-};
-
 const ExercisesPage = () => {
-  const [exercises, setExercises] = useState(mockExercises);
+  const [exercises, setExercises] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingExercise, setEditingExercise] = useState(null);
-  const [deleteExercise, setDeleteExercise] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  // Filter exercises
-  const filteredExercises = exercises.filter(ex => 
-    ex.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    getMuscleGroupLabel(ex.muscle_group).toLowerCase().includes(searchTerm.toLowerCase())
+  // Carrega exercícios do banco
+  const loadExercises = async () => {
+    setLoading(true);
+    try {
+      const data = await getExercises();
+      setExercises(data);
+    } catch (err) {
+      toast.error("Erro ao carregar exercícios: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadExercises();
+  }, []);
+
+  // Filtra pelo termo de busca
+  const filteredExercises = exercises.filter(ex =>
+    ex.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    ex.default_description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Handle save
-  const handleSave = (exerciseData) => {
+  // Callback do modal após salvar — recarrega do banco
+  const handleSave = (savedExercise) => {
     if (editingExercise) {
-      setExercises(prev => prev.map(ex => 
-        ex.id === exerciseData.id ? exerciseData : ex
-      ));
-      toast.success("Exercício atualizado com sucesso!");
+      setExercises(prev => prev.map(ex => ex.id === savedExercise.id ? savedExercise : ex));
     } else {
-      setExercises(prev => [exerciseData, ...prev]);
-      toast.success("Exercício criado com sucesso!");
+      setExercises(prev => [savedExercise, ...prev]);
     }
     setEditingExercise(null);
   };
 
-  // Handle delete
-  const handleDelete = () => {
-    if (deleteExercise) {
-      setExercises(prev => prev.filter(ex => ex.id !== deleteExercise.id));
-      toast.success("Exercício excluído com sucesso!");
-      setDeleteExercise(null);
+  // Excluir (soft delete)
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteExercise(deleteTarget.id);
+      setExercises(prev => prev.filter(ex => ex.id !== deleteTarget.id));
+      toast.success("Exercício excluído!");
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error("Erro ao excluir: " + err.message);
+    } finally {
+      setDeleting(false);
     }
   };
 
-  // Open edit modal
   const handleEdit = (exercise) => {
     setEditingExercise(exercise);
     setShowModal(true);
   };
 
-  // Open new modal
   const handleNew = () => {
     setEditingExercise(null);
     setShowModal(true);
@@ -118,7 +117,7 @@ const ExercisesPage = () => {
   return (
     <AdminLayout>
       <div className="space-y-6 animate-fade-in">
-        {/* Page Header */}
+        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
@@ -136,11 +135,11 @@ const ExercisesPage = () => {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <Card className="bg-card border-border">
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-foreground">{exercises.length}</p>
-              <p className="text-xs text-muted-foreground">Total</p>
+              <p className="text-xs text-muted-foreground">Total de Exercícios</p>
             </CardContent>
           </Card>
           <Card className="bg-card border-border">
@@ -151,31 +150,13 @@ const ExercisesPage = () => {
               <p className="text-xs text-muted-foreground">Com Vídeo</p>
             </CardContent>
           </Card>
-          <Card className="bg-card border-border">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-foreground">
-                {new Set(exercises.map(e => e.muscle_group)).size}
-              </p>
-              <p className="text-xs text-muted-foreground">Grupos Musculares</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-card border-border">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-foreground">
-                {new Set(exercises.map(e => e.equipment)).size}
-              </p>
-              <p className="text-xs text-muted-foreground">Equipamentos</p>
-            </CardContent>
-          </Card>
         </div>
 
-        {/* Table */}
+        {/* Tabela */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <CardTitle className="text-lg font-display">
-                Lista de Exercícios
-              </CardTitle>
+              <CardTitle className="text-lg font-display">Lista de Exercícios</CardTitle>
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -188,98 +169,103 @@ const ExercisesPage = () => {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border hover:bg-transparent">
-                    <TableHead className="text-muted-foreground">Exercício</TableHead>
-                    <TableHead className="text-muted-foreground hidden md:table-cell">Grupo Muscular</TableHead>
-                    <TableHead className="text-muted-foreground hidden lg:table-cell">Equipamento</TableHead>
-                    <TableHead className="text-muted-foreground hidden sm:table-cell">Dificuldade</TableHead>
-                    <TableHead className="text-muted-foreground text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredExercises.map((exercise) => (
-                    <TableRow key={exercise.id} className="border-border hover:bg-muted/50">
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "h-10 w-10 rounded-lg flex items-center justify-center",
-                            "bg-primary/10 text-primary"
-                          )}>
-                            {exercise.video_url ? (
-                              <Video className="h-5 w-5" />
-                            ) : (
-                              <Dumbbell className="h-5 w-5" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-medium text-foreground">{exercise.name}</p>
-                            <p className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">
-                              {exercise.description || "Sem descrição"}
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <Badge className={cn("border", muscleGroupColors[exercise.muscle_group])}>
-                          {getMuscleGroupLabel(exercise.muscle_group)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        <span className="text-sm text-foreground">
-                          {getEquipmentLabel(exercise.equipment)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        <Badge className={cn("border", difficultyColors[exercise.difficulty])}>
-                          {getDifficultyLabel(exercise.difficulty)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-card border-border">
-                            <DropdownMenuItem 
-                              className="gap-2 cursor-pointer"
-                              onClick={() => handleEdit(exercise)}
-                            >
-                              <Edit className="h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator className="bg-border" />
-                            <DropdownMenuItem 
-                              className="gap-2 cursor-pointer text-destructive focus:text-destructive"
-                              onClick={() => setDeleteExercise(exercise)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+            {loading ? (
+              <div className="py-16 flex items-center justify-center gap-2 text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                Carregando exercícios...
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-border hover:bg-transparent">
+                      <TableHead className="text-muted-foreground">Exercício</TableHead>
+                      <TableHead className="text-muted-foreground hidden md:table-cell">Vídeo</TableHead>
+                      <TableHead className="text-muted-foreground text-right">Ações</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredExercises.map((exercise) => (
+                      <TableRow key={exercise.id} className="border-border hover:bg-muted/50">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "h-10 w-10 rounded-lg flex items-center justify-center",
+                              "bg-primary/10 text-primary"
+                            )}>
+                              {exercise.video_url
+                                ? <Video className="h-5 w-5" />
+                                : <Dumbbell className="h-5 w-5" />
+                              }
+                            </div>
+                            <div>
+                              <p className="font-medium text-foreground">{exercise.title}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-1 max-w-[300px]">
+                                {exercise.default_description || "Sem descrição"}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          {exercise.video_url ? (
+                            <a
+                              href={exercise.video_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary hover:underline flex items-center gap-1"
+                            >
+                              <Video className="h-3.5 w-3.5" />
+                              Ver vídeo
+                            </a>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-card border-border">
+                              <DropdownMenuItem
+                                className="gap-2 cursor-pointer"
+                                onClick={() => handleEdit(exercise)}
+                              >
+                                <Edit className="h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator className="bg-border" />
+                              <DropdownMenuItem
+                                className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                onClick={() => setDeleteTarget(exercise)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
 
-            {filteredExercises.length === 0 && (
-              <div className="py-12 text-center">
-                <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-                <p className="text-muted-foreground">Nenhum exercício encontrado</p>
+                {filteredExercises.length === 0 && (
+                  <div className="py-12 text-center">
+                    <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                    <p className="text-muted-foreground">
+                      {searchTerm ? "Nenhum exercício encontrado" : "Nenhum exercício cadastrado"}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Exercise Form Modal */}
       <ExerciseFormModal
         isOpen={showModal}
         onClose={() => {
@@ -290,22 +276,22 @@ const ExercisesPage = () => {
         onSave={handleSave}
       />
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteExercise} onOpenChange={() => setDeleteExercise(null)}>
+      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-foreground">Excluir exercício?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir "{deleteExercise?.name}"? Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir "{deleteTarget?.title}"? Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-muted border-border">Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDelete}
+              disabled={deleting}
             >
-              Excluir
+              {deleting ? "Excluindo..." : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

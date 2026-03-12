@@ -5,7 +5,8 @@ export async function getStudentWorkouts() {
     .from("student_workouts")
     .select(`
       *,
-      profiles!student_id(name)
+      profiles!student_id(name),
+      workout_templates!template_id(title)
     `)
     .order("created_at", { ascending: false });
 
@@ -14,7 +15,7 @@ export async function getStudentWorkouts() {
   return data.map(w => ({
     ...w,
     student_name: w.profiles?.name || "Aluno",
-    workout_name: w.title
+    workout_name: w.workout_templates?.title || "Treino"
   }));
 }
 
