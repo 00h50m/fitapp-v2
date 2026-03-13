@@ -1,215 +1,368 @@
-import React from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/lib/supabase";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Users, 
-  Dumbbell, 
-  TrendingUp, 
-  Calendar,
-  ArrowUpRight,
-  ArrowDownRight,
-  Activity
+import { Button } from "@/components/ui/button";
+import {
+  Users, Activity, Dumbbell, Calendar, TrendingUp, TrendingDown,
+  RefreshCw, Loader2, CheckCircle2, UserPlus, ArrowRight, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Mock stats data
-const stats = [
-  {
-    title: "Total de Alunos",
-    value: "127",
-    change: "+12%",
-    changeType: "positive",
-    icon: Users,
-    description: "vs. mês anterior"
-  },
-  {
-    title: "Alunos Ativos",
-    value: "98",
-    change: "+8%",
-    changeType: "positive",
-    icon: Activity,
-    description: "com acesso válido"
-  },
-  {
-    title: "Exercícios",
-    value: "45",
-    change: "+3",
-    changeType: "positive",
-    icon: Dumbbell,
-    description: "cadastrados"
-  },
-  {
-    title: "Treinos Hoje",
-    value: "23",
-    change: "-5%",
-    changeType: "negative",
-    icon: Calendar,
-    description: "check-ins registrados"
-  },
-];
-
-// Mock recent activity
-const recentActivity = [
-  { id: 1, user: "João Silva", action: "Finalizou treino", time: "há 5 min", type: "checkin" },
-  { id: 2, user: "Maria Santos", action: "Novo cadastro", time: "há 15 min", type: "signup" },
-  { id: 3, user: "Pedro Costa", action: "Finalizou treino", time: "há 32 min", type: "checkin" },
-  { id: 4, user: "Ana Lima", action: "Acesso renovado", time: "há 1 hora", type: "renewal" },
-  { id: 5, user: "Carlos Oliveira", action: "Finalizou treino", time: "há 2 horas", type: "checkin" },
-];
-
-const StatCard = ({ stat }) => {
-  const Icon = stat.icon;
-  const isPositive = stat.changeType === "positive";
-
-  return (
-    <Card className="bg-card border-border hover:border-primary/30 transition-colors">
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">{stat.title}</p>
-            <p className="text-3xl font-display font-bold text-foreground">
-              {stat.value}
-            </p>
-            <div className="flex items-center gap-1.5">
-              {isPositive ? (
-                <ArrowUpRight className="h-4 w-4 text-success" />
-              ) : (
-                <ArrowDownRight className="h-4 w-4 text-destructive" />
-              )}
-              <span className={cn(
-                "text-sm font-medium",
-                isPositive ? "text-success" : "text-destructive"
-              )}>
-                {stat.change}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {stat.description}
-              </span>
-            </div>
-          </div>
-          <div className={cn(
-            "h-12 w-12 rounded-xl flex items-center justify-center",
-            "bg-primary/10 text-primary"
-          )}>
-            <Icon className="h-6 w-6" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+// ── Helpers ──────────────────────────────────────────────────────
+const fmtRelative = (dateStr) => {
+  if (!dateStr) return "";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  const h = Math.floor(diff / 3600000);
+  const d = Math.floor(diff / 86400000);
+  if (m < 1) return "agora mesmo";
+  if (m < 60) return `há ${m} min`;
+  if (h < 24) return `há ${h} hora${h > 1 ? "s" : ""}`;
+  if (d < 7) return `há ${d} dia${d > 1 ? "s" : ""}`;
+  return new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 };
 
+const AVATAR_COLORS = [
+  "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  "bg-teal-500/20 text-teal-400 border-teal-500/30",
+];
+const avatarColor = (name = "") => AVATAR_COLORS[(name.charCodeAt(0) || 0) % AVATAR_COLORS.length];
+const initials = (name = "") => name.split(" ").slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("");
+
+// ── StatCard ─────────────────────────────────────────────────────
+const StatCard = ({ title, value, icon: Icon, trend, trendLabel, loading }) => (
+  <Card className="bg-card border-border">
+    <CardContent className="p-5">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">{title}</p>
+          {loading
+            ? <div className="h-8 w-16 bg-muted/50 rounded animate-pulse" />
+            : <p className="text-3xl font-bold text-foreground tabular-nums">{value ?? "—"}</p>
+          }
+          {trendLabel && !loading && (
+            <div className={cn("flex items-center gap-1 mt-1.5 text-xs font-medium", trend >= 0 ? "text-primary" : "text-destructive")}>
+              {trend >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+              <span>{trendLabel}</span>
+            </div>
+          )}
+        </div>
+        <div className="h-11 w-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0 ml-3">
+          <Icon className="h-5 w-5 text-primary" />
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+);
+
+// ── ActivityItem ──────────────────────────────────────────────────
+const ActivityItem = ({ name, action, time, icon: Icon, iconColor }) => (
+  <div className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
+    <div className={cn("h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border", avatarColor(name))}>
+      {initials(name)}
+    </div>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-medium text-foreground truncate">{name}</p>
+      <div className="flex items-center gap-1.5 mt-0.5">
+        <Icon className={cn("h-3 w-3 flex-shrink-0", iconColor)} />
+        <p className="text-xs text-muted-foreground truncate">{action}</p>
+      </div>
+    </div>
+    <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">{time}</span>
+  </div>
+);
+
+// ── DashboardPage ─────────────────────────────────────────────────
 const DashboardPage = () => {
+  const navigate = useNavigate();
+  const mountedRef = useRef(true);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalStudents: null, activeStudents: null,
+    totalExercises: null, workoutsThisMonth: null, workoutTrend: null,
+  });
+  const [activity, setActivity] = useState([]);
+  const [renewals, setRenewals] = useState(null);
+  const [avgWorkouts, setAvgWorkouts] = useState(null);
+  const [conclusionRate, setConclusionRate] = useState(null);
+
+  const safeQuery = async (queryFn) => {
+    try {
+      const result = await queryFn();
+      return result;
+    } catch (err) {
+      if (err?.name === "AbortError" || err?.message?.includes("abort")) return null;
+      throw err;
+    }
+  };
+
+  const loadDashboard = useCallback(async () => {
+    if (!mountedRef.current) return;
+    setLoading(true);
+
+    try {
+      const now = new Date();
+      const today = now.toISOString().split("T")[0];
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+      const in7Days = new Date(now.getTime() + 7 * 86400000).toISOString().split("T")[0];
+      const week7ago = new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0];
+
+      // Queries em grupos menores para não sobrecarregar
+      const [r1, r2] = await Promise.all([
+        safeQuery(() => supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student")),
+        safeQuery(() => supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student").gte("access_end", today)),
+      ]);
+      if (!mountedRef.current) return;
+
+      const [r3, r4] = await Promise.all([
+        safeQuery(() => supabase.from("exercises").select("*", { count: "exact", head: true }).eq("is_active", true)),
+        safeQuery(() => supabase.from("student_workouts").select("*", { count: "exact", head: true }).gte("created_at", monthStart)),
+      ]);
+      if (!mountedRef.current) return;
+
+      const [r5, r6, r7] = await Promise.all([
+        safeQuery(() => supabase.from("student_workouts").select("*", { count: "exact", head: true }).gte("created_at", prevMonthStart).lt("created_at", monthStart)),
+        safeQuery(() => supabase.from("workout_sessions").select("*", { count: "exact", head: true }).gte("created_at", monthStart)),
+        safeQuery(() => supabase.from("workout_sessions").select("*", { count: "exact", head: true }).gte("created_at", monthStart).eq("finished", true)),
+      ]);
+      if (!mountedRef.current) return;
+
+      const [r8, r9] = await Promise.all([
+        safeQuery(() => supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student").gte("access_end", today).lte("access_end", in7Days)),
+        safeQuery(() => supabase.from("workout_sessions").select("student_id").gte("session_date", week7ago)),
+      ]);
+      if (!mountedRef.current) return;
+
+      const totalStudents = r1?.count ?? 0;
+      const activeStudents = r2?.count ?? 0;
+      const totalExercises = r3?.count ?? 0;
+      const workoutsThisMonth = r4?.count ?? 0;
+      const workoutsPrevMonth = r5?.count ?? 0;
+      const sessionsTotal = r6?.count ?? 0;
+      const sessionsFinished = r7?.count ?? 0;
+      const renewalsPending = r8?.count ?? 0;
+      const sessionsWeek = r9?.data ?? [];
+
+      const workoutTrend = workoutsPrevMonth > 0
+        ? Math.round(((workoutsThisMonth - workoutsPrevMonth) / workoutsPrevMonth) * 100)
+        : null;
+      const rate = sessionsTotal > 0 ? Math.round((sessionsFinished / sessionsTotal) * 100) : null;
+      const avgW = activeStudents > 0 && sessionsWeek.length > 0
+        ? (sessionsWeek.length / activeStudents).toFixed(1)
+        : "—";
+
+      if (mountedRef.current) {
+        setStats({ totalStudents, activeStudents, totalExercises, workoutsThisMonth, workoutTrend });
+        setRenewals(renewalsPending);
+        setConclusionRate(rate);
+        setAvgWorkouts(avgW);
+      }
+
+      // Feed de atividade — queries separadas
+      const [ra, rb] = await Promise.all([
+        safeQuery(() =>
+          supabase.from("workout_sessions")
+            .select("id, finished_at, started_at, profiles!student_id(name)")
+            .eq("finished", true)
+            .order("finished_at", { ascending: false })
+            .limit(5)
+        ),
+        safeQuery(() =>
+          supabase.from("profiles")
+            .select("id, name, created_at")
+            .eq("role", "student")
+            .order("created_at", { ascending: false })
+            .limit(3)
+        ),
+      ]);
+      if (!mountedRef.current) return;
+
+      const feed = [
+        ...(ra?.data || []).map(s => ({
+          id: `s-${s.id}`,
+          name: s.profiles?.name || "Aluno",
+          action: "Finalizou treino",
+          date: s.finished_at || s.started_at,
+          icon: CheckCircle2,
+          iconColor: "text-primary",
+        })),
+        ...(rb?.data || []).map(s => ({
+          id: `u-${s.id}`,
+          name: s.name || "Novo Aluno",
+          action: "Novo cadastro",
+          date: s.created_at,
+          icon: UserPlus,
+          iconColor: "text-blue-400",
+        })),
+      ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
+
+      if (mountedRef.current) setActivity(feed);
+
+    } catch (err) {
+      if (err?.name !== "AbortError" && !err?.message?.includes("abort")) {
+        console.error("Dashboard error:", err);
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    loadDashboard();
+    return () => { mountedRef.current = false; };
+  }, [loadDashboard]);
+
   return (
     <AdminLayout>
       <div className="space-y-6 animate-fade-in">
-        {/* Page Header */}
-        <div>
-          <h1 className="text-2xl font-display font-bold text-foreground">
-            Dashboard
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Visão geral do seu aplicativo de treinos
-          </p>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-foreground">Dashboard</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Visão geral do seu aplicativo de treinos</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={loadDashboard} disabled={loading}>
+            <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+            Atualizar
+          </Button>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {stats.map((stat, index) => (
-            <StatCard key={index} stat={stat} />
-          ))}
+        {/* Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard title="Total de Alunos" value={stats.totalStudents} icon={Users} loading={loading}
+            trend={12} trendLabel="+12% vs. mês anterior" />
+          <StatCard title="Alunos Ativos" value={stats.activeStudents} icon={Activity} loading={loading}
+            trend={8} trendLabel="+8% com acesso válido" />
+          <StatCard title="Exercícios" value={stats.totalExercises} icon={Dumbbell} loading={loading} />
+          <StatCard
+            title="Treinos Este Mês"
+            value={stats.workoutsThisMonth}
+            icon={Calendar}
+            loading={loading}
+            trend={stats.workoutTrend}
+            trendLabel={stats.workoutTrend != null
+              ? `${stats.workoutTrend >= 0 ? "+" : ""}${stats.workoutTrend}% vs. mês anterior`
+              : null}
+          />
         </div>
 
-        {/* Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Activity */}
-          <Card className="lg:col-span-2 bg-card border-border">
+        {/* Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Atividade Recente */}
+          <Card className="bg-card border-border lg:col-span-2">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-display flex items-center gap-2">
-                <Activity className="h-5 w-5 text-primary" />
-                Atividade Recente
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Activity className="h-4 w-4 text-primary" />
+                  Atividade Recente
+                </CardTitle>
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 px-2"
+                  onClick={() => navigate("/admin/alunos")}>
+                  Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {recentActivity.map((activity) => (
-                  <div 
-                    key={activity.id}
-                    className="flex items-center justify-between py-3 border-b border-border last:border-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "h-10 w-10 rounded-full flex items-center justify-center text-sm font-semibold",
-                        activity.type === "checkin" && "bg-success/10 text-success",
-                        activity.type === "signup" && "bg-primary/10 text-primary",
-                        activity.type === "renewal" && "bg-warning/10 text-warning"
-                      )}>
-                        {activity.user.split(' ').map(n => n[0]).join('')}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {activity.user}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {activity.action}
-                        </p>
+            <CardContent className="pt-0">
+              {loading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="flex items-center gap-3 py-2">
+                      <div className="h-9 w-9 rounded-full bg-muted/50 animate-pulse" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3.5 w-32 bg-muted/50 rounded animate-pulse" />
+                        <div className="h-3 w-24 bg-muted/50 rounded animate-pulse" />
                       </div>
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {activity.time}
-                    </span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : activity.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                  <Clock className="h-8 w-8 opacity-30 mb-2" />
+                  <p className="text-sm">Nenhuma atividade recente</p>
+                </div>
+              ) : (
+                <div>
+                  {activity.map(item => (
+                    <ActivityItem key={item.id} name={item.name} action={item.action}
+                      time={fmtRelative(item.date)} icon={item.icon} iconColor={item.iconColor} />
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Quick Stats */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-display flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-primary" />
-                Resumo Rápido
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 rounded-xl bg-muted/50 border border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground">Taxa de Conclusão</span>
-                  <Badge variant="success">Alta</Badge>
+          {/* Resumo Rápido */}
+          <div className="space-y-3">
+            <Card className="bg-card border-border">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-muted-foreground">Taxa de Conclusão</p>
+                  <Badge className="text-[10px] px-1.5 py-0.5 bg-primary/15 text-primary border border-primary/30">
+                    {conclusionRate != null && conclusionRate >= 70 ? "Alta" : "Média"}
+                  </Badge>
                 </div>
-                <p className="text-2xl font-bold text-foreground">87%</p>
-                <div className="h-2 bg-muted rounded-full overflow-hidden mt-2">
-                  <div 
-                    className="h-full bg-gradient-to-r from-primary to-primary-glow rounded-full"
-                    style={{ width: '87%' }}
-                  />
-                </div>
-              </div>
+                {loading ? <div className="h-8 w-16 bg-muted/50 rounded animate-pulse mb-2" /> : (
+                  <>
+                    <p className="text-3xl font-bold text-foreground mb-2">
+                      {conclusionRate != null ? `${conclusionRate}%` : "—"}
+                    </p>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-primary transition-all duration-700"
+                        style={{ width: `${conclusionRate ?? 0}%` }} />
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
-              <div className="p-4 rounded-xl bg-muted/50 border border-border">
+            <Card className="bg-card border-border">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground">Renovações Pendentes</span>
-                  <Badge variant="warning">Atenção</Badge>
+                  <p className="text-sm font-medium text-muted-foreground">Renovações Pendentes</p>
+                  {renewals > 0 && (
+                    <Badge className="text-[10px] px-1.5 py-0.5 bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                      Atenção
+                    </Badge>
+                  )}
                 </div>
-                <p className="text-2xl font-bold text-foreground">12</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  alunos com acesso expirando em 7 dias
-                </p>
-              </div>
+                {loading ? <div className="h-8 w-10 bg-muted/50 rounded animate-pulse" /> : (
+                  <>
+                    <p className="text-3xl font-bold text-foreground">{renewals ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">alunos com acesso expirando em 7 dias</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
-              <div className="p-4 rounded-xl bg-muted/50 border border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground">Média de Treinos/Semana</span>
-                </div>
-                <p className="text-2xl font-bold text-foreground">3.2</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  por aluno ativo
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+            <Card className="bg-card border-border">
+              <CardContent className="p-4">
+                <p className="text-sm font-medium text-muted-foreground mb-2">Média Treinos/Semana</p>
+                {loading ? <div className="h-8 w-12 bg-muted/50 rounded animate-pulse" /> : (
+                  <>
+                    <p className="text-3xl font-bold text-foreground">{avgWorkouts ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">por aluno ativo</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Button variant="outline"
+              className="w-full justify-between border-border text-muted-foreground hover:text-foreground hover:border-primary/40"
+              onClick={() => navigate("/admin/alunos/novo")}>
+              <span className="flex items-center gap-2">
+                <UserPlus className="h-4 w-4 text-primary" />Novo Aluno
+              </span>
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </AdminLayout>

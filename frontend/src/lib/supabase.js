@@ -1,11 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = "https://gsixrfvbusezudqbquiu.supabase.co"
-const supabaseAnonKey = "sb_publishable_huMMa40m-f-SirdVxAaAnQ_xJ4EGa6Q"
+const supabaseUrl = "https://gsixrfvbusezudqbquiu.supabase.co";
+const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzaXhyZnZidXNlenVkcWJxdWl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NTIxMTEsImV4cCI6MjA4NjMyODExMX0.7TAhXexcqjhfCcL1CDPx1llz46uGIWZkYaW32BiGzTw";
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase: variáveis de ambiente não configuradas');
-}
-console.log("SUPABASE URL:", supabaseUrl)
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    // Desabilita navigator.locks — evita AbortError no React StrictMode
+    lock: undefined,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+});

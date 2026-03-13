@@ -7,7 +7,8 @@ import { Loader2 } from "lucide-react";
 
 // Pages
 import LoginPage from "@/pages/LoginPage";
-import StudentDashboard from "@/pages/student/StudentDashboard";
+
+// Student Pages
 import StudentWorkoutsPage from "@/pages/student/StudentWorkoutsPage";
 import StudentWorkoutPage from "@/pages/student/StudentWorkoutPage";
 
@@ -25,7 +26,7 @@ import {
   CustomWorkoutsPage,
 } from "@/pages/admin/treinos";
 
-// Redirect inteligente por role
+// ── Redirect inteligente por role ──────────────────────────────────────────
 const RedirectByRole = () => {
   const { user, isAdmin, loading } = useAuth();
 
@@ -46,34 +47,48 @@ function AppRoutes() {
   return (
     <Routes>
       {/* PUBLIC */}
-      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <LoginPage />
+          </PublicRoute>
+        }
+      />
 
-      {/* ── ADMIN ─────────────────────────────────────────────── */}
+      {/* STUDENT — abre sempre na lista de treinos */}
+      <Route
+        path="/student"
+        element={
+          <ProtectedRoute>
+            <StudentWorkoutsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/workout/:id"
+        element={
+          <ProtectedRoute>
+            <StudentWorkoutPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Compatibilidade com rotas antigas */}
+      <Route path="/app" element={<Navigate to="/student" replace />} />
+      <Route path="/student/workouts" element={<Navigate to="/student" replace />} />
+
+      {/* ADMIN */}
       <Route path="/admin" element={<AdminRoute><DashboardPage /></AdminRoute>} />
       <Route path="/admin/alunos" element={<AdminRoute><AdminAlunosPage /></AdminRoute>} />
       <Route path="/admin/alunos/novo" element={<AdminRoute><CreateStudentPage /></AdminRoute>} />
       <Route path="/admin/exercicios" element={<AdminRoute><ExerciciosPage /></AdminRoute>} />
-
-      {/* Treinos */}
       <Route path="/admin/treinos/exercicios" element={<AdminRoute><TreinosExercisesPage /></AdminRoute>} />
       <Route path="/admin/treinos/templates" element={<AdminRoute><WorkoutsPage /></AdminRoute>} />
       <Route path="/admin/treinos/editor/:id" element={<AdminRoute><WorkoutEditorPage /></AdminRoute>} />
       <Route path="/admin/treinos/personalizados" element={<AdminRoute><CustomWorkoutsPage /></AdminRoute>} />
 
-      {/* ── STUDENT ───────────────────────────────────────────── */}
-      {/* /student → verifica treino ativo e redireciona */}
-      <Route path="/student" element={<ProtectedRoute><StudentDashboard /></ProtectedRoute>} />
-
-      {/* /student/workouts → lista de todos os treinos */}
-      <Route path="/student/workouts" element={<ProtectedRoute><StudentWorkoutsPage /></ProtectedRoute>} />
-
-      {/* /student/workout/:id → execução do treino */}
-      <Route path="/student/workout/:id" element={<ProtectedRoute><StudentWorkoutPage /></ProtectedRoute>} />
-
-      {/* Compatibilidade com rota antiga /app */}
-      <Route path="/app" element={<Navigate to="/student" replace />} />
-
-      {/* HOME → redirect por role */}
+      {/* HOME */}
       <Route path="/" element={<RedirectByRole />} />
 
       {/* FALLBACK */}

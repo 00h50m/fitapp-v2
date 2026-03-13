@@ -1,16 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Select, SelectContent, SelectItem,
-  SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Table, TableBody, TableCell,
-  TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableHead,
+  TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -22,224 +18,156 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Dumbbell, Search, Plus, MoreHorizontal, Edit, Trash2,
-  Video, Loader2, RefreshCw, Filter, X, Layers, Zap,
+  Dumbbell, Search, Plus, MoreHorizontal,
+  Edit, Trash2, Video, Loader2, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import {
-  getExercises, saveExercise, deleteExercise,
-  muscleGroupOptions, equipmentOptions, difficultyOptions,
-  muscleGroupColors, difficultyColors, getLabel,
-} from "@/services/exercisesService";
+import { supabase } from "@/lib/supabase";
 import ExerciseFormModal from "@/components/treinos/ExerciseFormModal";
 
-// ── Drawer de detalhes ──────────────────────────────────────────
-const ExerciseDetailDrawer = ({ exercise, onClose, onEdit }) => {
-  if (!exercise) return null;
-  const ytId = (() => {
-    const m = exercise.video_url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
-    return m ? m[1] : null;
-  })();
+const difficultyColors = {
+  beginner: "bg-success/15 text-success border-success/30",
+  intermediate: "bg-warning/15 text-warning border-warning/30",
+  advanced: "bg-destructive/15 text-destructive border-destructive/30",
+};
+const difficultyLabel = { beginner: "Iniciante", intermediate: "Intermediário", advanced: "Avançado" };
 
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border-l border-border h-full overflow-y-auto z-50 shadow-2xl">
-        <div className="sticky top-0 bg-card border-b border-border px-5 py-4 flex items-center justify-between z-10">
-          <h2 className="font-display font-bold text-foreground text-lg truncate pr-4">{exercise.title}</h2>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => onEdit(exercise)}>
-              <Edit className="h-4 w-4 mr-1.5" />Editar
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        <div className="p-5 space-y-5">
-          <div className="flex flex-wrap gap-2">
-            {exercise.muscle_group && <Badge className={cn("border", muscleGroupColors[exercise.muscle_group])}>{getLabel(muscleGroupOptions, exercise.muscle_group)}</Badge>}
-            {exercise.difficulty && <Badge className={cn("border", difficultyColors[exercise.difficulty])}>{getLabel(difficultyOptions, exercise.difficulty)}</Badge>}
-            {exercise.mechanics && <Badge variant="outline" className="text-xs">{exercise.mechanics === "compound" ? "Composto" : "Isolado"}</Badge>}
-            {exercise.category && <Badge variant="outline" className="text-xs">{exercise.category}</Badge>}
-          </div>
-
-          {exercise.secondary_muscles?.length > 0 && (
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Músculos Secundários</p>
-              <div className="flex flex-wrap gap-1.5">
-                {exercise.secondary_muscles.map(m => (
-                  <span key={m} className={cn("px-2 py-0.5 rounded-full text-xs border", muscleGroupColors[m] || "bg-muted text-muted-foreground border-border")}>
-                    {getLabel(muscleGroupOptions, m)}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {ytId ? (
-            <div className="aspect-video rounded-xl overflow-hidden border border-border bg-muted">
-              <iframe src={`https://www.youtube.com/embed/${ytId}`} className="w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen title={exercise.title} />
-            </div>
-          ) : exercise.thumbnail_url ? (
-            <img src={exercise.thumbnail_url} alt={exercise.title} className="w-full rounded-xl border border-border object-cover max-h-48" />
-          ) : null}
-
-          {exercise.default_description && (
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5">Descrição</p>
-              <p className="text-sm text-foreground leading-relaxed">{exercise.default_description}</p>
-            </div>
-          )}
-
-          {exercise.instructions && (
-            <div className="bg-muted/50 rounded-xl p-4 border border-border">
-              <p className="text-xs text-primary uppercase tracking-wide font-medium mb-2 flex items-center gap-1.5">
-                <Layers className="h-3.5 w-3.5" />Instruções de Execução
-              </p>
-              <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">{exercise.instructions}</p>
-            </div>
-          )}
-
-          {exercise.tips && (
-            <div className="bg-primary/5 rounded-xl p-4 border border-primary/20">
-              <p className="text-xs text-primary uppercase tracking-wide font-medium mb-2 flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5" />Dicas do Treinador
-              </p>
-              <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">{exercise.tips}</p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            {exercise.equipment && (
-              <div className="bg-muted/50 rounded-xl p-3 border border-border">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Equipamento</p>
-                <p className="text-sm font-medium text-foreground mt-0.5">{getLabel(equipmentOptions, exercise.equipment)}</p>
-              </div>
-            )}
-            {exercise.force && (
-              <div className="bg-muted/50 rounded-xl p-3 border border-border">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Padrão</p>
-                <p className="text-sm font-medium text-foreground mt-0.5">{exercise.force}</p>
-              </div>
-            )}
-          </div>
-
-          {exercise.tags?.length > 0 && (
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Tags</p>
-              <div className="flex flex-wrap gap-1.5">
-                {exercise.tags.map(tag => (
-                  <span key={tag} className="px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-xs text-primary">{tag}</span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+const muscleGroupColors = {
+  chest: "bg-red-500/15 text-red-400 border-red-500/30",
+  back: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  legs: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+  shoulders: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+  biceps: "bg-green-500/15 text-green-400 border-green-500/30",
+  triceps: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+  core: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  cardio: "bg-pink-500/15 text-pink-400 border-pink-500/30",
+  glutes: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+  full_body: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
 };
 
-// ── Página principal ────────────────────────────────────────────
 const ExercisesPage = () => {
   const [exercises, setExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [filterMuscle, setFilterMuscle] = useState("");
-  const [filterEquipment, setFilterEquipment] = useState("");
-  const [filterDifficulty, setFilterDifficulty] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingExercise, setEditingExercise] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteExercise, setDeleteExercise] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
-  const [detailExercise, setDetailExercise] = useState(null);
 
-  // Debounce search para evitar AbortErrors
-  const searchDebounceRef = useRef(null);
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-
-  useEffect(() => {
-    clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => setDebouncedSearch(search), 400);
-    return () => clearTimeout(searchDebounceRef.current);
-  }, [search]);
-
-  // Carrega exercícios — sem useCallback para evitar re-renders
-  const loadExercises = async (params = {}) => {
+  const loadExercises = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getExercises(params);
-      setExercises(data);
+      const { data, error } = await supabase
+        .from("exercises")
+        .select("*")
+        .eq("is_active", true)
+        .order("title", { ascending: true });
+      if (error) throw error;
+      setExercises(data || []);
     } catch (err) {
-      // AbortError é silencioso (query cancelada pelo navegador)
-      if (err?.name !== "AbortError") {
-        toast.error("Erro ao carregar exercícios");
-      }
+      toast.error("Erro ao carregar exercícios: " + err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Recarrega quando filtros mudam
-  useEffect(() => {
-    loadExercises({
-      search: debouncedSearch,
-      muscleGroup: filterMuscle,
-      equipment: filterEquipment,
-      difficulty: filterDifficulty,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, filterMuscle, filterEquipment, filterDifficulty]);
+  useEffect(() => { loadExercises(); }, [loadExercises]);
 
-  const hasFilters = filterMuscle || filterEquipment || filterDifficulty || debouncedSearch;
+  const filteredExercises = exercises.filter(ex =>
+    (ex.title || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (ex.muscle_group || "").toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  const clearFilters = () => {
-    setSearch(""); setFilterMuscle("");
-    setFilterEquipment(""); setFilterDifficulty("");
-  };
+  // Save: cria ou atualiza. Valida nome único no front antes de enviar.
+  const handleSave = async (exerciseData) => {
+    const titleNorm = (exerciseData.title || "").trim().toLowerCase();
 
-  const handleSave = async (data) => {
-    // saveExercise lança erro com mensagem amigável se duplicata
-    const saved = await saveExercise(data);
-    toast.success(data.id ? "Exercício atualizado!" : "Exercício criado!");
-    // Atualiza lista sem recarregar tudo
-    setExercises(prev => {
-      if (data.id) return prev.map(e => e.id === saved.id ? saved : e);
-      return [saved, ...prev];
-    });
-    // Fecha o modal após sucesso
-    setShowModal(false);
-    setEditingExercise(null);
-    return saved;
+    // Verificar duplicata (exceto o próprio ao editar)
+    const duplicate = exercises.find(ex =>
+      ex.title?.trim().toLowerCase() === titleNorm &&
+      ex.id !== exerciseData.id
+    );
+    if (duplicate) {
+      toast.error(`Já existe um exercício chamado "${exerciseData.title.trim()}"`);
+      return false; // sinaliza erro para o modal não fechar
+    }
+
+    try {
+      if (editingExercise) {
+        const { error } = await supabase
+          .from("exercises")
+          .update({
+            title: exerciseData.title.trim(),
+            description: exerciseData.description || null,
+            video_url: exerciseData.video_url || null,
+            muscle_group: exerciseData.muscle_group || null,
+            equipment: exerciseData.equipment || null,
+            difficulty: exerciseData.difficulty || null,
+          })
+          .eq("id", editingExercise.id);
+        if (error) {
+          if (error.code === "23505") {
+            toast.error("Já existe um exercício com esse nome");
+            return false;
+          }
+          throw error;
+        }
+        toast.success("Exercício atualizado!");
+      } else {
+        const { error } = await supabase
+          .from("exercises")
+          .insert([{
+            title: exerciseData.title.trim(),
+            description: exerciseData.description || null,
+            video_url: exerciseData.video_url || null,
+            muscle_group: exerciseData.muscle_group || null,
+            equipment: exerciseData.equipment || null,
+            difficulty: exerciseData.difficulty || null,
+            is_active: true,
+          }]);
+        if (error) {
+          if (error.code === "23505") {
+            toast.error("Já existe um exercício com esse nome");
+            return false;
+          }
+          throw error;
+        }
+        toast.success("Exercício criado!");
+      }
+      setEditingExercise(null);
+      setShowModal(false);
+      loadExercises();
+      return true;
+    } catch (err) {
+      toast.error("Erro ao salvar: " + err.message);
+      return false;
+    }
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteExercise) return;
     setDeleting(true);
     try {
-      await deleteExercise(deleteTarget.id);
-      toast.success("Exercício removido!");
-      setExercises(prev => prev.filter(e => e.id !== deleteTarget.id));
-      setDeleteTarget(null);
+      const { error } = await supabase
+        .from("exercises")
+        .update({ is_active: false })
+        .eq("id", deleteExercise.id);
+      if (error) throw error;
+      toast.success("Exercício removido");
+      setDeleteExercise(null);
+      loadExercises();
     } catch (err) {
-      toast.error("Erro ao remover");
+      toast.error("Erro ao excluir: " + err.message);
     } finally {
       setDeleting(false);
     }
   };
 
-  const handleEdit = (ex) => {
-    setDetailExercise(null);
-    setEditingExercise(ex);
+  const handleEdit = (exercise) => {
+    setEditingExercise(exercise);
     setShowModal(true);
   };
-
-  const withVideo = exercises.filter(e => e.video_url).length;
-  const muscles = new Set(exercises.map(e => e.muscle_group).filter(Boolean)).size;
 
   return (
     <AdminLayout>
@@ -251,203 +179,188 @@ const ExercisesPage = () => {
               <Dumbbell className="h-6 w-6 text-primary" />
               Biblioteca de Exercícios
             </h1>
-            <p className="text-muted-foreground mt-1">Gerencie os exercícios disponíveis para os treinos</p>
+            <p className="text-muted-foreground mt-1">
+              Gerencie os exercícios disponíveis para os treinos
+            </p>
           </div>
-          <Button variant="premium" className="gap-2" onClick={() => { setEditingExercise(null); setShowModal(true); }}>
-            <Plus className="h-4 w-4" />Novo Exercício
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={loadExercises} disabled={loading}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
+            <Button variant="premium" className="gap-2" onClick={() => { setEditingExercise(null); setShowModal(true); }}>
+              <Plus className="h-4 w-4" />
+              Novo Exercício
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: "Total",            value: exercises.length,                                color: "text-foreground" },
-            { label: "Com Vídeo",        value: withVideo,                                       color: "text-primary" },
-            { label: "Grupos Musculares", value: muscles,                                        color: "text-foreground" },
-            { label: "Com Dificuldade",  value: exercises.filter(e => e.difficulty).length,      color: "text-foreground" },
+            { label: "Total", value: exercises.length, color: "text-foreground" },
+            { label: "Com Vídeo", value: exercises.filter(e => e.video_url).length, color: "text-primary" },
+            { label: "Grupos Musc.", value: new Set(exercises.map(e => e.muscle_group).filter(Boolean)).size, color: "text-foreground" },
+            { label: "Equipamentos", value: new Set(exercises.map(e => e.equipment).filter(Boolean)).size, color: "text-foreground" },
           ].map(s => (
             <Card key={s.label} className="bg-card border-border">
               <CardContent className="p-4 text-center">
                 <p className={cn("text-2xl font-bold", s.color)}>{s.value}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+                <p className="text-xs text-muted-foreground">{s.label}</p>
               </CardContent>
             </Card>
           ))}
         </div>
 
-        {/* Filtros */}
+        {/* Table */}
         <Card className="bg-card border-border">
-          <CardContent className="p-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+          <CardHeader className="pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <CardTitle className="text-lg font-display">Lista de Exercícios</CardTitle>
+              <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar exercício..." value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="pl-10 bg-muted border-border" />
+                <Input
+                  placeholder="Buscar exercício..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 bg-muted border-border"
+                />
               </div>
-
-              <Select value={filterMuscle} onValueChange={setFilterMuscle}>
-                <SelectTrigger className="bg-muted border-border w-full sm:w-44">
-                  <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <SelectValue placeholder="Músculo" />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {muscleGroupOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterEquipment} onValueChange={setFilterEquipment}>
-                <SelectTrigger className="bg-muted border-border w-full sm:w-44">
-                  <SelectValue placeholder="Equipamento" />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {equipmentOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterDifficulty} onValueChange={setFilterDifficulty}>
-                <SelectTrigger className="bg-muted border-border w-full sm:w-40">
-                  <SelectValue placeholder="Dificuldade" />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {difficultyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-
-              {hasFilters && (
-                <Button variant="ghost" size="icon" onClick={clearFilters} title="Limpar filtros">
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-
-              <Button variant="ghost" size="icon" title="Recarregar"
-                onClick={() => loadExercises({ search: debouncedSearch, muscleGroup: filterMuscle, equipment: filterEquipment, difficulty: filterDifficulty })}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Tabela */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2 pt-4 px-6">
-            <CardTitle className="text-base font-display flex items-center gap-2">
-              Lista de Exercícios
-              {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-            </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border hover:bg-transparent">
-                    <TableHead className="text-muted-foreground pl-6">Exercício</TableHead>
-                    <TableHead className="text-muted-foreground hidden md:table-cell">Grupo Muscular</TableHead>
-                    <TableHead className="text-muted-foreground hidden lg:table-cell">Equipamento</TableHead>
-                    <TableHead className="text-muted-foreground hidden sm:table-cell">Dificuldade</TableHead>
-                    <TableHead className="text-muted-foreground hidden xl:table-cell">Mecânica</TableHead>
-                    <TableHead className="text-muted-foreground text-right pr-6">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading && exercises.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-16 text-center">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
-                        <p className="text-muted-foreground text-sm">Carregando exercícios...</p>
-                      </TableCell>
-                    </TableRow>
-                  ) : exercises.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-16 text-center">
-                        <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-                        <p className="text-muted-foreground">Nenhum exercício encontrado</p>
-                        {hasFilters && (
-                          <Button variant="link" className="mt-2 text-primary" onClick={clearFilters}>
-                            Limpar filtros
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ) : exercises.map(ex => (
-                    <TableRow key={ex.id} className="border-border hover:bg-muted/30 cursor-pointer"
-                      onClick={() => setDetailExercise(ex)}>
-                      <TableCell className="pl-6">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-primary/10 text-primary flex-shrink-0 overflow-hidden">
-                            {ex.thumbnail_url
-                              ? <img src={ex.thumbnail_url} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display = "none"; }} />
-                              : ex.video_url ? <Video className="h-5 w-5" /> : <Dumbbell className="h-5 w-5" />
-                            }
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium text-foreground truncate max-w-[200px]">{ex.title}</p>
-                            <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                              {ex.default_description || "Sem descrição"}
-                            </p>
-                          </div>
+            {loading ? (
+              <div className="py-16 flex items-center justify-center gap-3">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="text-muted-foreground">Carregando...</span>
+              </div>
+            ) : (
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-border hover:bg-transparent">
+                        <TableHead className="text-muted-foreground">Exercício</TableHead>
+                        <TableHead className="text-muted-foreground">Grupo Muscular</TableHead>
+                        <TableHead className="text-muted-foreground hidden lg:table-cell">Equipamento</TableHead>
+                        <TableHead className="text-muted-foreground">Dificuldade</TableHead>
+                        <TableHead className="text-muted-foreground text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredExercises.map((exercise) => (
+                        <TableRow key={exercise.id} className="border-border hover:bg-muted/50">
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-primary/10 text-primary flex-shrink-0">
+                                {exercise.video_url ? <Video className="h-5 w-5" /> : <Dumbbell className="h-5 w-5" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-medium text-foreground truncate max-w-[200px]">{exercise.title}</p>
+                                <p className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">
+                                  {exercise.description || "Sem descrição"}
+                                </p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {exercise.muscle_group && (
+                              <Badge className={cn("border text-xs", muscleGroupColors[exercise.muscle_group] || "bg-muted text-muted-foreground")}>
+                                {exercise.muscle_group}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="hidden lg:table-cell">
+                            <span className="text-sm text-foreground">{exercise.equipment || "—"}</span>
+                          </TableCell>
+                          <TableCell>
+                            {exercise.difficulty && (
+                              <Badge className={cn("border text-xs", difficultyColors[exercise.difficulty] || "bg-muted text-muted-foreground")}>
+                                {difficultyLabel[exercise.difficulty] || exercise.difficulty}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="bg-card border-border">
+                                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleEdit(exercise)}>
+                                  <Edit className="h-4 w-4" />Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator className="bg-border" />
+                                <DropdownMenuItem
+                                  className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                  onClick={() => setDeleteExercise(exercise)}
+                                >
+                                  <Trash2 className="h-4 w-4" />Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Mobile cards */}
+                <div className="md:hidden divide-y divide-border">
+                  {filteredExercises.map((exercise) => (
+                    <div key={exercise.id} className="p-4 flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                        {exercise.video_url ? <Video className="h-5 w-5" /> : <Dumbbell className="h-5 w-5" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground truncate">{exercise.title}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {exercise.muscle_group && (
+                            <span className="text-xs text-muted-foreground">{exercise.muscle_group}</span>
+                          )}
+                          {exercise.difficulty && (
+                            <Badge className={cn("border text-[10px] px-1", difficultyColors[exercise.difficulty] || "bg-muted")}>
+                              {difficultyLabel[exercise.difficulty] || exercise.difficulty}
+                            </Badge>
+                          )}
                         </div>
-                      </TableCell>
-
-                      <TableCell className="hidden md:table-cell">
-                        {ex.muscle_group
-                          ? <Badge className={cn("border text-xs", muscleGroupColors[ex.muscle_group])}>{getLabel(muscleGroupOptions, ex.muscle_group)}</Badge>
-                          : <span className="text-muted-foreground text-xs">—</span>}
-                      </TableCell>
-
-                      <TableCell className="hidden lg:table-cell">
-                        <span className="text-sm text-foreground">{getLabel(equipmentOptions, ex.equipment)}</span>
-                      </TableCell>
-
-                      <TableCell className="hidden sm:table-cell">
-                        {ex.difficulty
-                          ? <Badge className={cn("border text-xs", difficultyColors[ex.difficulty])}>{getLabel(difficultyOptions, ex.difficulty)}</Badge>
-                          : <span className="text-muted-foreground text-xs">—</span>}
-                      </TableCell>
-
-                      <TableCell className="hidden xl:table-cell">
-                        <span className="text-xs text-muted-foreground">
-                          {ex.mechanics === "compound" ? "Composto" : ex.mechanics === "isolation" ? "Isolado" : "—"}
-                        </span>
-                      </TableCell>
-
-                      <TableCell className="text-right pr-6" onClick={e => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-card border-border">
-                            <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleEdit(ex)}>
-                              <Edit className="h-4 w-4" />Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator className="bg-border" />
-                            <DropdownMenuItem
-                              className="gap-2 cursor-pointer text-destructive focus:text-destructive"
-                              onClick={() => setDeleteTarget(ex)}
-                            >
-                              <Trash2 className="h-4 w-4" />Remover
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-card border-border">
+                          <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleEdit(exercise)}>
+                            <Edit className="h-4 w-4" />Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-border" />
+                          <DropdownMenuItem
+                            className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                            onClick={() => setDeleteExercise(exercise)}
+                          >
+                            <Trash2 className="h-4 w-4" />Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
-            </div>
+                </div>
+
+                {filteredExercises.length === 0 && !loading && (
+                  <div className="py-12 text-center">
+                    <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                    <p className="text-muted-foreground">Nenhum exercício encontrado</p>
+                  </div>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
-
-      {detailExercise && (
-        <ExerciseDetailDrawer
-          exercise={detailExercise}
-          onClose={() => setDetailExercise(null)}
-          onEdit={handleEdit}
-        />
-      )}
 
       <ExerciseFormModal
         isOpen={showModal}
@@ -456,22 +369,22 @@ const ExercisesPage = () => {
         onSave={handleSave}
       />
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+      <AlertDialog open={!!deleteExercise} onOpenChange={() => setDeleteExercise(null)}>
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-foreground">Remover exercício?</AlertDialogTitle>
+            <AlertDialogTitle className="text-foreground">Excluir exercício?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja remover "{deleteTarget?.title}"?
-              O exercício não aparecerá mais em novas prescrições.
+              Tem certeza que deseja excluir "{deleteExercise?.title}"? Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-muted border-border">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={handleDelete} disabled={deleting}
+              onClick={handleDelete}
+              disabled={deleting}
             >
-              {deleting ? "Removendo..." : "Remover"}
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

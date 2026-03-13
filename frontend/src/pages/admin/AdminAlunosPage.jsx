@@ -1,385 +1,250 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { AdminLayout } from '@/components/layout/AdminLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { AdminLayout } from "@/components/layout/AdminLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { 
-  Users, 
-  Search, 
-  Plus, 
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
-  Calendar
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+  Users, Plus, Search, RefreshCw, Loader2,
+  AlertCircle, ChevronRight, Calendar, Mail,
+  CheckCircle2, Clock, UserX,
+} from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+function getAccessStatus(access_end) {
+  if (!access_end) return { label: "Sem data", variant: "secondary", icon: Clock };
+  const end = new Date(access_end + "T23:59");
+  const now = new Date();
+  const diffDays = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return { label: "Expirado", variant: "destructive", icon: UserX };
+  if (diffDays <= 7) return { label: `Expira em ${diffDays}d`, variant: "warning", icon: Clock };
+  return { label: "Ativo", variant: "success", icon: CheckCircle2 };
+}
+
+function getInitials(name) {
+  if (!name) return "?";
+  return name.split(" ").slice(0, 2).map(n => n[0]).join("").toUpperCase();
+}
+
+const HUES = [0, 25, 45, 120, 200, 260, 300];
+function getHue(str) {
+  if (!str) return 0;
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h + str.charCodeAt(i)) % HUES.length;
+  return HUES[h];
+}
 
 const AdminAlunosPage = () => {
-  const { profile } = useAuth();
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [students, setStudents] = useState([]);
+  const [alunos, setAlunos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  // Modal state for creating session
-  const [showSessionModal, setShowSessionModal] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState(null);
-  const [sessionDate, setSessionDate] = useState('');
-  const [workoutId, setWorkoutId] = useState('');
-  const [creatingSession, setCreatingSession] = useState(false);
+  const [search, setSearch] = useState("");
 
-  // Fetch students (role = 'student')
-    const fetchStudents = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Colunas corretas conforme schema real da tabela profiles
+      const { data, error: err } = await supabase
+        .from("profiles")
+        .select("id, name, email, phone, access_end, training_level, plan, created_at")
+        .eq("role", "student")
+        .order("name", { ascending: true });
 
-      setLoading(true)
-      setError(null)
-
-      try {
-
-        const { data, error } = await supabase
-          .from('profiles')
-          .select(`
-            id,
-            name,
-            email,
-            plan,
-            training_level,
-            is_active,
-            access_end
-          `)
-          .eq('role', 'student')
-          .order('created_at', { ascending: false })
-
-        if (error) throw error
-
-        setStudents(data || [])
-
-      } catch (err) {
-
-        console.error('Erro ao buscar alunos:', err)
-        setError(err.message)
-
-      } finally {
-
-        setLoading(false)
-
-      }
-
+      if (err) throw err;
+      setAlunos(data || []);
+    } catch (err) {
+      setError(err.message);
+      toast.error("Erro ao carregar alunos");
+    } finally {
+      setLoading(false);
     }
-
-  useEffect(() => {
-    fetchStudents();
   }, []);
 
-  // Filter students based on search
-  const filteredStudents = students.filter(student => {
-    const term = searchTerm.toLowerCase();
-    return (
-      (student.name?.toLowerCase() || '').includes(term) ||
-      (student.email?.toLowerCase() || '').includes(term)
-    );
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = alunos.filter(a => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return a.name?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q);
   });
 
-  // Stats
-  const totalStudents = students.length;
-
-  // Get initials from name
-  const getInitials = (name) => {
-    if (!name) return '?';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  };
-
-  // Open session creation modal
-  const handleCreateSession = (student) => {
-    setSelectedStudent(student);
-    setSessionDate(new Date().toISOString().split('T')[0]);
-    setWorkoutId('');
-    setShowSessionModal(true);
-  };
-
-  // Create workout session
-  const handleSubmitSession = async () => {
-    if (!selectedStudent || !sessionDate || !workoutId.trim()) {
-      toast.error('Preencha todos os campos');
-      return;
-    }
-
-    setCreatingSession(true);
-    try {
-      const { error: insertError } = await supabase
-        .from('workout_sessions')
-        .insert({
-          student_id: selectedStudent.id,
-          workout_id: workoutId.trim(),
-          session_date: sessionDate,
-        });
-
-      if (insertError) throw insertError;
-
-      toast.success('Sessão de treino criada com sucesso!');
-      setShowSessionModal(false);
-      setSelectedStudent(null);
-    } catch (err) {
-      console.error('Erro ao criar sessão:', err);
-      toast.error(err.message || 'Erro ao criar sessão');
-    } finally {
-      setCreatingSession(false);
-    }
-  };
+  const total = alunos.length;
+  const ativos = alunos.filter(a => {
+    if (!a.access_end) return false;
+    return new Date(a.access_end + "T23:59") >= new Date();
+  }).length;
 
   return (
     <AdminLayout>
       <div className="space-y-6 animate-fade-in">
-        {/* Page Header */}
-       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 
-          <div>
-            <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
-              <Users className="h-6 w-6 text-primary" />
-              Alunos
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Gerencie os alunos e suas sessões de treino
-            </p>
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-display font-bold text-foreground">Alunos</h1>
+              <p className="text-sm text-muted-foreground">Gerencie os alunos e suas sessões de treino</p>
+            </div>
           </div>
-
           <Button
+            variant="premium"
+            className="gap-2 w-full sm:w-auto"
             onClick={() => navigate("/admin/alunos/novo")}
-            className="gap-2"
           >
             <Plus className="h-4 w-4" />
             Novo Aluno
           </Button>
-
         </div>
 
-        {/* Stats Card */}
-        <Card className="bg-card border-border">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Users className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">
-                {loading ? '-' : totalStudents}
-              </p>
-              <p className="text-sm text-muted-foreground">Total de Alunos</p>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <Card className="bg-card border-border">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                  <Users className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{loading ? "—" : total}</p>
+                  <p className="text-xs text-muted-foreground">Total de Alunos</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-card border-border">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="h-4 w-4 text-green-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{loading ? "—" : ativos}</p>
+                  <p className="text-xs text-muted-foreground">Ativos</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-card border-border col-span-2 sm:col-span-1">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center justify-center flex-shrink-0">
+                  <UserX className="h-4 w-4 text-destructive" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{loading ? "—" : total - ativos}</p>
+                  <p className="text-xs text-muted-foreground">Expirados/Sem plano</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Search and Table */}
+        {/* Lista */}
         <Card className="bg-card border-border">
-          <CardHeader className="pb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <CardTitle className="text-lg font-display flex items-center gap-2">
-                Lista de Alunos
-                {!loading && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8"
-                    onClick={fetchStudents}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-                )}
-              </CardTitle>
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por nome ou email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 bg-muted border-border"
-                />
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <CardTitle className="text-base font-display">Lista de Alunos</CardTitle>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nome ou email..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="pl-8 h-8 text-sm bg-muted border-border"
+                  />
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={load}>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-0">
-            {/* Loading State */}
-            {loading && (
-              <div className="py-12 text-center">
-                <Loader2 className="h-8 w-8 mx-auto text-primary animate-spin mb-4" />
-                <p className="text-muted-foreground">Carregando alunos...</p>
-              </div>
-            )}
 
-            {/* Error State */}
-            {error && !loading && (
-              <div className="py-12 text-center">
-                <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-                <p className="text-destructive font-medium mb-2">Erro ao carregar dados</p>
-                <p className="text-sm text-muted-foreground mb-4">{error}</p>
-                <Button variant="outline" onClick={fetchStudents} className="gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  Tentar novamente
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-7 w-7 animate-spin text-primary" />
+              </div>
+            ) : error ? (
+              <div className="py-12 text-center px-4">
+                <AlertCircle className="h-8 w-8 mx-auto text-destructive mb-3" />
+                <p className="text-sm text-destructive mb-3">{error}</p>
+                <Button variant="outline" size="sm" onClick={load}>
+                  <RefreshCw className="h-3.5 w-3.5 mr-2" />Tentar novamente
                 </Button>
               </div>
-            )}
-
-            {/* Table */}
-            {!loading && !error && (
-              <div className="overflow-x-auto">
-                <Table>
-               <TableHeader>
-                    <TableRow>
-
-                    <TableHead>Aluno</TableHead>
-                    <TableHead>Plano</TableHead>
-                    <TableHead>Nível</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Plano até</TableHead>
-                    <TableHead>Ações</TableHead>
-
-                    </TableRow>
-                    </TableHeader>
-                  <TableBody>
-                    {filteredStudents.map((student) => (
-                      <TableRow 
-                        key={student.id} 
-                        className="border-border hover:bg-muted/50"
-                      >
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold">
-                              {getInitials(student.name)}
-                            </div>
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {student.name || 'Sem nome'}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                {student.email || '-'}
-                              </p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <Badge variant="secondary">
-                            {student.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-2"
-                            onClick={() => handleCreateSession(student)}
-                          >
-                            <Plus className="h-4 w-4" />
-                            Nova Sessão
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-
-            {/* Empty State */}
-            {!loading && !error && filteredStudents.length === 0 && (
-              <div className="py-12 text-center">
-                <Users className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-                <p className="text-muted-foreground">
-                  {searchTerm ? 'Nenhum aluno encontrado' : 'Nenhum aluno cadastrado'}
+            ) : filtered.length === 0 ? (
+              <div className="py-12 text-center px-4">
+                <Users className="h-8 w-8 mx-auto text-muted-foreground/30 mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  {search ? `Nenhum aluno encontrado para "${search}"` : "Nenhum aluno cadastrado"}
                 </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {filtered.map(aluno => {
+                  const status = getAccessStatus(aluno.access_end);
+                  const initials = getInitials(aluno.name);
+                  const hue = getHue(aluno.name);
+
+                  return (
+                    <div
+                      key={aluno.id}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer"
+                      onClick={() => navigate(`/admin/alunos/${aluno.id}`)}
+                    >
+                      <div
+                        className="h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border"
+                        style={{
+                          background: `hsl(${hue} 60% 20%)`,
+                          borderColor: `hsl(${hue} 60% 30%)`,
+                          color: `hsl(${hue} 80% 70%)`,
+                        }}
+                      >
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {aluno.name || "Sem nome"}
+                          </p>
+                          <Badge variant={status.variant} className="text-[10px] flex-shrink-0">
+                            {status.label}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          {aluno.email && (
+                            <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                              <Mail className="h-3 w-3 flex-shrink-0" />
+                              {aluno.email}
+                            </p>
+                          )}
+                          {aluno.access_end && (
+                            <p className="text-xs text-muted-foreground flex-shrink-0 hidden sm:flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {new Date(aluno.access_end + "T12:00").toLocaleDateString("pt-BR")}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>
         </Card>
-        </div>
-
-      {/* Create Session Modal */}
-      <Dialog open={showSessionModal} onOpenChange={setShowSessionModal}>
-        <DialogContent className="bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">
-              Nova Sessão de Treino
-            </DialogTitle>
-            <DialogDescription>
-              Criar sessão para {selectedStudent?.name || 'aluno'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Data da Sessão
-              </label>
-              <Input
-                type="date"
-                value={sessionDate}
-                onChange={(e) => setSessionDate(e.target.value)}
-                className="bg-muted border-border"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                ID do Treino
-              </label>
-              <Input
-                placeholder="Ex: treino_a, treino_b..."
-                value={workoutId}
-                onChange={(e) => setWorkoutId(e.target.value)}
-                className="bg-muted border-border"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setShowSessionModal(false)}
-              disabled={creatingSession}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="premium"
-              onClick={handleSubmitSession}
-              disabled={creatingSession}
-            >
-              {creatingSession ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Criando...
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4" />
-                  Criar Sessão
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      </div>
     </AdminLayout>
   );
 };

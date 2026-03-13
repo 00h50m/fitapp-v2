@@ -10,12 +10,14 @@ import {
   Select, SelectContent, SelectItem,
   SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Save, X, User, ClipboardList, Loader2 } from "lucide-react";
+import { Save, X, User, ClipboardList, Loader2, Edit } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { copyTemplateToStudent } from "@/services/workoutService";
 import { toast } from "sonner";
 
-const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
+const AssignWorkoutModal = ({ isOpen, onClose, onSave, workout = null }) => {
+  const isEditMode = !!workout;
+
   const [students, setStudents] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
@@ -28,6 +30,28 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
     end_date: "",
   });
 
+  // Popula form quando abre em modo edição
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (isEditMode && workout) {
+      setFormData({
+        student_id: workout.student_id || "",
+        template_id: workout.template_id || "",
+        start_date: workout.start_date || new Date().toISOString().split("T")[0],
+        end_date: workout.end_date || "",
+      });
+    } else {
+      setFormData({
+        student_id: "",
+        template_id: "",
+        start_date: new Date().toISOString().split("T")[0],
+        end_date: "",
+      });
+    }
+  }, [isOpen, workout]);
+
+  // Carrega alunos e templates
   useEffect(() => {
     if (!isOpen) return;
     const fetchData = async () => {
@@ -38,7 +62,6 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
             .from("profiles")
             .select("id, name, email")
             .eq("role", "student")
-            .eq("is_active", true)
             .order("name"),
           supabase
             .from("workout_templates")
@@ -64,54 +87,78 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.student_id || !formData.template_id || !formData.end_date) {
+    if (!formData.student_id || !formData.end_date) {
       toast.error("Preencha todos os campos obrigatórios");
+      return;
+    }
+    if (!isEditMode && !formData.template_id) {
+      toast.error("Selecione um treino");
       return;
     }
 
     setSaving(true);
     try {
-      const template = templates.find(t => t.id === formData.template_id);
       const student = students.find(s => s.id === formData.student_id);
 
-      // 1. Cria student_workout
-      // student_id referencia profiles.id (que é igual ao auth.uid)
-      const { data: studentWorkout, error } = await supabase
-        .from("student_workouts")
-        .insert([{
-          student_id: formData.student_id,
-          template_id: formData.template_id,
+      if (isEditMode) {
+        // Modo edição — só atualiza datas e status
+        const { data: updated, error } = await supabase
+          .from("student_workouts")
+          .update({
+            start_date: formData.start_date,
+            end_date: formData.end_date,
+            status: "active",
+          })
+          .eq("id", workout.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        toast.success("Treino atualizado!");
+        onSave?.({
+          ...updated,
+          student_name: workout.student_name || student?.name || "Aluno",
+          workout_name: workout.workout_name || updated.title || "Treino",
+        });
+      } else {
+        // Modo criação — cria student_workout + copia blocos
+        const template = templates.find(t => t.id === formData.template_id);
+
+        const { data: studentWorkout, error } = await supabase
+          .from("student_workouts")
+          .insert([{
+            student_id: formData.student_id,
+            template_id: formData.template_id,
+            title: template?.title || "Treino",
+            start_date: formData.start_date,
+            end_date: formData.end_date,
+            status: "active",
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        await copyTemplateToStudent({
+          studentWorkoutId: studentWorkout.id,
+          templateId: formData.template_id,
+          studentProfileId: formData.student_id,
           title: template?.title || "Treino",
-          start_date: formData.start_date,
-          end_date: formData.end_date,
-          status: "active",
-        }])
-        .select()
-        .single();
+        });
 
-      if (error) throw error;
+        toast.success(`Treino atribuído para ${student?.name}!`);
+        onSave?.({
+          ...studentWorkout,
+          student_name: student?.name || "Aluno",
+          workout_name: template?.title || "Treino",
+        });
+      }
 
-      // 2. Copia blocos/exercícios do template para student_workout_blocks/exercises
-      await copyTemplateToStudent({
-        studentWorkoutId: studentWorkout.id,
-        templateId: formData.template_id,
-        studentProfileId: formData.student_id,
-        title: template?.title || "Treino",
-      });
-
-      toast.success(`Treino atribuído para ${student?.name}!`);
-      onSave?.(studentWorkout);
       onClose();
-
-      setFormData({
-        student_id: "",
-        template_id: "",
-        start_date: new Date().toISOString().split("T")[0],
-        end_date: "",
-      });
     } catch (err) {
-      console.error("Erro ao atribuir treino:", err);
-      toast.error("Erro ao atribuir treino: " + err.message);
+      console.error("Erro ao salvar treino:", err);
+      toast.error("Erro ao salvar treino: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -121,11 +168,14 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-card border-border max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-xl font-display text-foreground">
-            Atribuir Treino
+          <DialogTitle className="text-xl font-display text-foreground flex items-center gap-2">
+            {isEditMode ? <Edit className="h-5 w-5 text-primary" /> : <ClipboardList className="h-5 w-5 text-primary" />}
+            {isEditMode ? "Editar Treino" : "Atribuir Treino"}
           </DialogTitle>
           <DialogDescription>
-            Atribua um template de treino a um aluno
+            {isEditMode
+              ? `Editando: ${workout?.workout_name || "Treino"} — ${workout?.student_name || "Aluno"}`
+              : "Atribua um template de treino a um aluno"}
           </DialogDescription>
         </DialogHeader>
 
@@ -136,49 +186,64 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Aluno — bloqueado no modo edição */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
                 Aluno *
               </Label>
-              <Select value={formData.student_id} onValueChange={v => handleChange("student_id", v)}>
-                <SelectTrigger className="bg-muted border-border">
-                  <SelectValue placeholder="Selecione um aluno..." />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {students.length === 0
-                    ? <SelectItem value="none" disabled>Nenhum aluno cadastrado</SelectItem>
-                    : students.map(s => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                          {s.email && <span className="text-muted-foreground text-xs ml-2">({s.email})</span>}
-                        </SelectItem>
-                      ))
-                  }
-                </SelectContent>
-              </Select>
+              {isEditMode ? (
+                <div className="px-3 py-2 rounded-md bg-muted border border-border text-sm text-muted-foreground">
+                  {workout?.student_name || "—"}
+                </div>
+              ) : (
+                <Select value={formData.student_id} onValueChange={v => handleChange("student_id", v)}>
+                  <SelectTrigger className="bg-muted border-border">
+                    <SelectValue placeholder="Selecione um aluno..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border">
+                    {students.length === 0
+                      ? <SelectItem value="none" disabled>Nenhum aluno cadastrado</SelectItem>
+                      : students.map(s => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                            {s.email && <span className="text-muted-foreground text-xs ml-2">({s.email})</span>}
+                          </SelectItem>
+                        ))
+                    }
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
+            {/* Treino — bloqueado no modo edição */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <ClipboardList className="h-4 w-4 text-muted-foreground" />
                 Treino *
               </Label>
-              <Select value={formData.template_id} onValueChange={v => handleChange("template_id", v)}>
-                <SelectTrigger className="bg-muted border-border">
-                  <SelectValue placeholder="Selecione um treino..." />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {templates.length === 0
-                    ? <SelectItem value="none" disabled>Nenhum template cadastrado</SelectItem>
-                    : templates.map(t => (
-                        <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
-                      ))
-                  }
-                </SelectContent>
-              </Select>
+              {isEditMode ? (
+                <div className="px-3 py-2 rounded-md bg-muted border border-border text-sm text-muted-foreground">
+                  {workout?.workout_name || "—"}
+                </div>
+              ) : (
+                <Select value={formData.template_id} onValueChange={v => handleChange("template_id", v)}>
+                  <SelectTrigger className="bg-muted border-border">
+                    <SelectValue placeholder="Selecione um treino..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border">
+                    {templates.length === 0
+                      ? <SelectItem value="none" disabled>Nenhum template cadastrado</SelectItem>
+                      : templates.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                        ))
+                    }
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
+            {/* Datas */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Data Início *</Label>
@@ -210,6 +275,8 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave }) => {
           <Button onClick={handleSubmit} variant="premium" disabled={saving || loadingData}>
             {saving
               ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</>
+              : isEditMode
+              ? <><Save className="h-4 w-4 mr-2" />Salvar Alterações</>
               : <><Save className="h-4 w-4 mr-2" />Atribuir Treino</>
             }
           </Button>

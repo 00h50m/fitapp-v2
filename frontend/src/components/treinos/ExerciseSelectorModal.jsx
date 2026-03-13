@@ -1,184 +1,228 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
+  Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Dumbbell, Check, Video, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { Search, Dumbbell, Check, Video, Loader2, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getExercises } from "@/services/exercisesService";
-import { toast } from "sonner";
+
+const muscleGroupColors = {
+  chest:     "bg-red-500/15 text-red-400 border-red-500/30",
+  back:      "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  legs:      "bg-purple-500/15 text-purple-400 border-purple-500/30",
+  shoulders: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+  biceps:    "bg-green-500/15 text-green-400 border-green-500/30",
+  triceps:   "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+  core:      "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  cardio:    "bg-pink-500/15 text-pink-400 border-pink-500/30",
+  glutes:    "bg-rose-500/15 text-rose-400 border-rose-500/30",
+  full_body: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
+};
+
+const getEmbedUrl = (url) => {
+  if (!url) return "";
+  if (url.includes("/embed/")) return url;
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+  return m ? `https://www.youtube.com/embed/${m[1]}` : "";
+};
 
 const ExerciseSelectorModal = ({ isOpen, onClose, onSelect, selectedIds = [] }) => {
   const [exercises, setExercises] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedExercise, setSelectedExercise] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [previewVideo, setPreviewVideo] = useState(null);
 
-  // Busca exercícios do banco quando o modal abre
-  useEffect(() => {
+  const loadExercises = useCallback(async () => {
     if (!isOpen) return;
+    setLoading(true);
+    try {
+      // Não filtra por is_active para evitar erro 400 se coluna não existir
+      const { data, error } = await supabase
+        .from("exercises")
+        .select("id, title, description, video_url, muscle_group, equipment, difficulty")
+        .order("title");
 
-    const load = async () => {
-      setLoading(true);
-      try {
-        const data = await getExercises();
-        setExercises(data);
-      } catch (err) {
-        toast.error("Erro ao carregar exercícios: " + err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
+      if (error) throw error;
+      setExercises(data || []);
+    } catch (err) {
+      console.error("ExerciseSelectorModal:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [isOpen]);
 
-  // Filtra por título ou descrição
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedExercise(null);
+      setSearchTerm("");
+      setPreviewVideo(null);
+      loadExercises();
+    }
+  }, [isOpen, loadExercises]);
+
   const filteredExercises = exercises.filter(ex =>
-    ex.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ex.default_description?.toLowerCase().includes(searchTerm.toLowerCase())
+    (ex.title || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (ex.muscle_group || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleSelect = () => {
-    if (!selectedExercise) return;
-    onSelect(selectedExercise);
-    setSelectedExercise(null);
-    setSearchTerm("");
-    onClose();
+    if (selectedExercise) {
+      onSelect({ ...selectedExercise, name: selectedExercise.title });
+      setSelectedExercise(null);
+      setSearchTerm("");
+      setPreviewVideo(null);
+      onClose();
+    }
   };
 
   const handleClose = () => {
     setSelectedExercise(null);
     setSearchTerm("");
+    setPreviewVideo(null);
     onClose();
   };
 
+  const embedUrl = previewVideo ? getEmbedUrl(previewVideo.video_url) : "";
+
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-card border-border max-w-lg max-h-[80vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="bg-card border-border max-w-lg max-h-[85vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="px-5 pt-5 pb-3">
           <DialogTitle className="text-xl font-display text-foreground flex items-center gap-2">
             <Dumbbell className="h-5 w-5 text-primary" />
             Selecionar Exercício
           </DialogTitle>
-          <DialogDescription>
-            Escolha um exercício da biblioteca
-          </DialogDescription>
+          <DialogDescription>Escolha um exercício da biblioteca</DialogDescription>
         </DialogHeader>
 
-        {/* Busca */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar exercício..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-muted border-border"
-            autoFocus
-          />
+        {/* Search */}
+        <div className="px-5 pb-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar exercício..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-10 bg-muted border-border"
+              autoFocus
+            />
+          </div>
         </div>
 
-        {/* Lista */}
-        <ScrollArea className="h-[340px] -mx-6 px-6">
-          <div className="space-y-2 py-2">
+        {/* Video preview inline */}
+        {previewVideo && embedUrl && (
+          <div className="px-5 pb-3">
+            <div className="aspect-video rounded-lg overflow-hidden bg-muted border border-border">
+              <iframe
+                src={embedUrl}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                title={previewVideo.title}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 text-center">
+              {previewVideo.title}
+            </p>
+          </div>
+        )}
 
-            {loading && (
-              <div className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Carregando exercícios...
-              </div>
-            )}
+        {/* List */}
+        <ScrollArea className="flex-1 px-5 min-h-0">
+          {loading ? (
+            <div className="py-10 flex items-center justify-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">Carregando exercícios...</span>
+            </div>
+          ) : (
+            <div className="space-y-2 py-2">
+              {filteredExercises.map(exercise => {
+                const isSelected = selectedExercise?.id === exercise.id;
+                const isAlreadyAdded = selectedIds.includes(exercise.id);
+                const isPreviewing = previewVideo?.id === exercise.id;
+                const hasVideo = !!exercise.video_url;
 
-            {!loading && filteredExercises.map((exercise) => {
-              const isSelected = selectedExercise?.id === exercise.id;
-              const isAlreadyAdded = selectedIds.includes(exercise.id);
-
-              return (
-                <div
-                  key={exercise.id}
-                  className={cn(
-                    "p-3 rounded-lg border transition-all",
-                    isAlreadyAdded
-                      ? "opacity-50 cursor-not-allowed border-border bg-muted/30"
-                      : "cursor-pointer",
-                    !isAlreadyAdded && isSelected
-                      ? "border-primary bg-primary/10"
-                      : !isAlreadyAdded && "border-border bg-muted/50 hover:border-primary/50"
-                  )}
-                  onClick={() => !isAlreadyAdded && setSelectedExercise(exercise)}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0",
+                return (
+                  <div
+                    key={exercise.id}
+                    className={cn(
+                      "p-3 rounded-lg border transition-all",
                       isSelected
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-card text-muted-foreground"
-                    )}>
-                      {isSelected ? (
-                        <Check className="h-5 w-5" />
-                      ) : exercise.video_url ? (
-                        <Video className="h-5 w-5" />
-                      ) : (
-                        <Dumbbell className="h-5 w-5" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={cn(
-                        "font-medium truncate",
-                        isSelected ? "text-primary" : "text-foreground"
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-muted/50 hover:border-primary/30",
+                      isAlreadyAdded && "opacity-50 cursor-not-allowed",
+                      !isAlreadyAdded && "cursor-pointer"
+                    )}
+                    onClick={() => !isAlreadyAdded && setSelectedExercise(exercise)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0",
+                        isSelected ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground"
                       )}>
-                        {exercise.title}
-                      </p>
-                      {exercise.default_description && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {exercise.default_description}
+                        {isSelected
+                          ? <Check className="h-4 w-4" />
+                          : hasVideo
+                          ? <Video className="h-4 w-4" />
+                          : <Dumbbell className="h-4 w-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={cn("font-medium truncate text-sm", isSelected ? "text-primary" : "text-foreground")}>
+                          {exercise.title}
                         </p>
-                      )}
-                      {isAlreadyAdded && (
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          Já adicionado
-                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {exercise.muscle_group && (
+                            <Badge className={cn("text-[10px] border", muscleGroupColors[exercise.muscle_group] || "bg-muted text-muted-foreground border-border")}>
+                              {exercise.muscle_group}
+                            </Badge>
+                          )}
+                          {exercise.difficulty && (
+                            <span className="text-[10px] text-muted-foreground">{exercise.difficulty}</span>
+                          )}
+                          {isAlreadyAdded && (
+                            <span className="text-[10px] text-muted-foreground">Já adicionado</span>
+                          )}
+                        </div>
+                      </div>
+                      {hasVideo && !isAlreadyAdded && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn("h-7 w-7 flex-shrink-0", isPreviewing && "text-primary bg-primary/10")}
+                          onClick={e => {
+                            e.stopPropagation();
+                            setPreviewVideo(isPreviewing ? null : exercise);
+                          }}
+                          title={isPreviewing ? "Fechar vídeo" : "Pré-visualizar vídeo"}
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                        </Button>
                       )}
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
 
-            {!loading && filteredExercises.length === 0 && (
-              <div className="py-8 text-center">
-                <Dumbbell className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  {exercises.length === 0
-                    ? "Nenhum exercício cadastrado ainda"
-                    : "Nenhum exercício encontrado"}
-                </p>
-                {exercises.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Cadastre exercícios na página de Exercícios primeiro
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+              {filteredExercises.length === 0 && !loading && (
+                <div className="py-8 text-center">
+                  <Dumbbell className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
+                  <p className="text-sm text-muted-foreground">Nenhum exercício encontrado</p>
+                </div>
+              )}
+            </div>
+          )}
         </ScrollArea>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 pt-4 border-t border-border">
-          <Button variant="ghost" onClick={handleClose}>
-            Cancelar
-          </Button>
-          <Button
-            variant="premium"
-            onClick={handleSelect}
-            disabled={!selectedExercise}
-          >
+        <div className="flex justify-end gap-2 p-5 border-t border-border">
+          <Button variant="ghost" onClick={handleClose}>Cancelar</Button>
+          <Button variant="premium" onClick={handleSelect} disabled={!selectedExercise}>
             Adicionar Exercício
           </Button>
         </div>
