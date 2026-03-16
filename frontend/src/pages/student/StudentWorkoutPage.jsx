@@ -40,114 +40,284 @@ function getYoutubeId(url) {
   return null;
 }
 
+
+// ─── PDF Viewer via PDF.js ─────────────────────────────────────────────────
+const PDFJS_CDN    = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+function loadPdfJs() {
+  return new Promise((resolve, reject) => {
+    if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
+    const s = document.createElement("script");
+    s.src = PDFJS_CDN;
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; resolve(window.pdfjsLib); };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+const PdfModal = ({ url, onClose }) => {
+  const canvasRef = React.useRef(null);
+  const [page, setPage] = React.useState(1);
+  const [total, setTotal] = React.useState(0);
+  const [pdfDoc, setPdfDoc] = React.useState(null);
+  const [pdfLoading, setPdfLoading] = React.useState(true);
+  const [pdfError, setPdfError] = React.useState(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setPdfLoading(true); setPdfError(null);
+    loadPdfJs()
+      .then(lib => lib.getDocument({ url, withCredentials: false }).promise)
+      .then(doc => { if (!cancelled) { setPdfDoc(doc); setTotal(doc.numPages); setPdfLoading(false); } })
+      .catch(() => { if (!cancelled) { setPdfError(true); setPdfLoading(false); } });
+    return () => { cancelled = true; };
+  }, [url]);
+
+  React.useEffect(() => {
+    if (!pdfDoc || !canvasRef.current) return;
+    pdfDoc.getPage(page).then(p => {
+      const vp = p.getViewport({ scale: 1.4 });
+      const canvas = canvasRef.current;
+      canvas.width = vp.width; canvas.height = vp.height;
+      p.render({ canvasContext: canvas.getContext("2d"), viewport: vp });
+    });
+  }, [pdfDoc, page]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/90 backdrop-blur-sm p-0 sm:p-4"
+      onClick={onClose}>
+      <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl flex flex-col overflow-hidden"
+        style={{ height: "92dvh" }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" />
+            <span className="font-semibold text-sm">PDF do Treino</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {total > 1 && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page <= 1} className="px-2 py-1 rounded bg-muted disabled:opacity-40">‹</button>
+                {page}/{total}
+                <button onClick={() => setPage(p => Math.min(total, p+1))} disabled={page >= total} className="px-2 py-1 rounded bg-muted disabled:opacity-40">›</button>
+              </div>
+            )}
+            <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Abrir</a>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}><X className="h-4 w-4" /></Button>
+          </div>
+        </div>
+        {/* Content */}
+        <div className="flex-1 overflow-auto flex items-start justify-center p-3 bg-muted/20">
+          {pdfLoading && <div className="flex items-center justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
+          {pdfError && (
+            <div className="flex flex-col items-center py-16 gap-3">
+              <p className="text-sm text-muted-foreground">Não foi possível carregar o PDF inline.</p>
+              <a href={url} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" size="sm">Abrir em nova aba</Button>
+              </a>
+            </div>
+          )}
+          {!pdfLoading && !pdfError && <canvas ref={canvasRef} className="shadow-lg max-w-full rounded" />}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Modal de detalhes do exercício ───────────────────────────────────────
 const ExerciseDetailModal = ({ exercise, onClose }) => {
   if (!exercise) return null;
   const ytId = getYoutubeId(exercise.video_url);
 
+  // Chip de info pequeno
+  const Chip = ({ icon: Icon, label, value, accent }) => (
+    <div className={cn(
+      "flex items-center gap-2 rounded-xl p-2.5",
+      accent ? "bg-primary/10 border border-primary/20" : "bg-muted/70 border border-border/50"
+    )}>
+      <Icon className={cn("h-3.5 w-3.5 flex-shrink-0", accent ? "text-primary" : "text-muted-foreground")} />
+      <div className="min-w-0">
+        <p className="text-[9px] text-muted-foreground uppercase tracking-wide leading-none mb-0.5">{label}</p>
+        <p className={cn("text-xs font-bold leading-none truncate", accent ? "text-primary" : "text-foreground")}>{value}</p>
+      </div>
+    </div>
+  );
+
+  const Section = ({ title, children }) => (
+    <div className="space-y-2">
+      <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">{title}</p>
+      {children}
+    </div>
+  );
+
+  const hasPrescricao = exercise.sets || exercise.reps || exercise.rest_seconds || exercise.load || exercise.tempo;
+  const hasInfo = exercise.muscle_group || exercise.equipment || exercise.difficulty || exercise.category || exercise.mechanics || exercise.force;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/90 backdrop-blur-sm p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/80 backdrop-blur-md p-0 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg overflow-hidden flex flex-col"
-        style={{ maxHeight: "90dvh" }}
+        className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md overflow-hidden flex flex-col shadow-2xl"
+        style={{ maxHeight: "94dvh" }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <Dumbbell className="h-4 w-4 text-primary" />
-            <span className="font-semibold text-sm text-foreground truncate">{exercise.exercise_name}</span>
+        <div className="flex items-start justify-between px-4 pt-4 pb-3 flex-shrink-0">
+          <div className="flex-1 min-w-0 pr-2">
+            <p className="text-[10px] text-primary font-semibold uppercase tracking-wider mb-0.5">Detalhes do Exercício</p>
+            <h2 className="font-bold text-base text-foreground leading-tight">{exercise.exercise_name}</h2>
           </div>
-          <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0 -mt-0.5" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Corpo scrollável */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Vídeo embed */}
+        <div className="flex-1 overflow-y-auto">
+
+          {/* Vídeo full width */}
           {ytId && (
-            <div className="rounded-xl overflow-hidden aspect-video bg-black">
+            <div className="aspect-video bg-black w-full">
               <iframe
                 src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
                 className="w-full h-full"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                title={exercise.exercise_name}
+                allowFullScreen title={exercise.exercise_name}
               />
             </div>
           )}
 
-          {/* Prescrição */}
-          <div className="grid grid-cols-2 gap-2">
-            {exercise.sets && (
-              <div className="bg-muted/60 rounded-xl p-3 flex items-center gap-2">
-                <Layers className="h-4 w-4 text-primary flex-shrink-0" />
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Séries</p>
-                  <p className="text-sm font-semibold text-foreground">{exercise.sets}</p>
+          <div className="p-5 space-y-5">
+
+            {/* PRESCRIÇÃO */}
+            {hasPrescricao && (
+              <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4">
+                <p className="text-[9px] font-bold text-primary uppercase tracking-widest mb-3">📋 Prescrição</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {exercise.sets && (
+                    <div className="text-center">
+                      <p className="text-3xl font-black text-primary leading-none">{exercise.sets}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">séries</p>
+                    </div>
+                  )}
+                  {exercise.reps && (
+                    <div className="text-center">
+                      <p className="text-3xl font-black text-foreground leading-none">{exercise.reps}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">reps</p>
+                    </div>
+                  )}
+                  {exercise.rest_seconds && (
+                    <div className="text-center">
+                      <p className="text-3xl font-black text-foreground leading-none">
+                        {exercise.rest_seconds}<span className="text-lg font-bold">s</span>
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">descanso</p>
+                    </div>
+                  )}
                 </div>
+                {(exercise.load || exercise.tempo) && (
+                  <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-primary/15">
+                    {exercise.load  && <Chip icon={Weight} label="Carga"  value={exercise.load}  accent />}
+                    {exercise.tempo && <Chip icon={Zap}    label="Tempo"  value={exercise.tempo} accent />}
+                  </div>
+                )}
               </div>
             )}
-            {exercise.reps && (
-              <div className="bg-muted/60 rounded-xl p-3 flex items-center gap-2">
-                <Repeat className="h-4 w-4 text-primary flex-shrink-0" />
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Repetições</p>
-                  <p className="text-sm font-semibold text-foreground">{exercise.reps}</p>
-                </div>
+
+            {/* Informações do exercício */}
+            {(exercise.muscle_group || exercise.equipment || exercise.difficulty) && (
+              <div className="grid grid-cols-3 gap-2.5">
+                {exercise.muscle_group && <Chip icon={Dumbbell} label="Músculo"     value={exercise.muscle_group} />}
+                {exercise.equipment    && <Chip icon={Layers}   label="Equipamento" value={exercise.equipment} />}
+                {exercise.difficulty   && <Chip icon={Zap}      label="Nível"       value={exercise.difficulty} />}
               </div>
             )}
-            {exercise.rest_seconds && (
-              <div className="bg-muted/60 rounded-xl p-3 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-primary flex-shrink-0" />
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Descanso</p>
-                  <p className="text-sm font-semibold text-foreground">{exercise.rest_seconds}s</p>
+
+            {/* Músculos secundários */}
+            {exercise.secondary_muscles?.length > 0 && (
+              <Section title="Músculos secundários">
+                <div className="flex flex-wrap gap-2">
+                  {(Array.isArray(exercise.secondary_muscles) ? exercise.secondary_muscles : [exercise.secondary_muscles])
+                    .map((m, i) => (
+                      <span key={i} className="text-xs bg-muted/80 border border-border text-muted-foreground px-3 py-1.5 rounded-full">{m}</span>
+                    ))}
                 </div>
+              </Section>
+            )}
+
+            {/* Info extra */}
+            {(exercise.category || exercise.mechanics || exercise.force) && (
+              <div className="grid grid-cols-3 gap-2.5">
+                {exercise.category  && <Chip icon={Info}   label="Categoria" value={exercise.category} />}
+                {exercise.mechanics && <Chip icon={Repeat} label="Mecânica"  value={exercise.mechanics} />}
+                {exercise.force     && <Chip icon={Weight} label="Força"     value={exercise.force} />}
               </div>
             )}
-            {exercise.load && (
-              <div className="bg-muted/60 rounded-xl p-3 flex items-center gap-2">
-                <Weight className="h-4 w-4 text-primary flex-shrink-0" />
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Carga</p>
-                  <p className="text-sm font-semibold text-foreground">{exercise.load}</p>
+
+            {/* Descrição */}
+            {exercise.default_description && (
+              <Section title="Descrição">
+                <p className="text-sm text-muted-foreground leading-relaxed">{exercise.default_description}</p>
+              </Section>
+            )}
+
+            {/* Execução */}
+            {exercise.instructions && (
+              <Section title="Como executar">
+                <div className="bg-muted/30 rounded-2xl p-4">
+                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">{exercise.instructions}</p>
                 </div>
+              </Section>
+            )}
+
+            {/* Dicas */}
+            {exercise.tips && (
+              <Section title="Dicas do treinador">
+                <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex gap-3">
+                  <StickyNote className="h-4 w-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-foreground leading-relaxed">{exercise.tips}</p>
+                </div>
+              </Section>
+            )}
+
+            {/* Observações */}
+            {exercise.obs && (
+              <Section title="Obs. do treino">
+                <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-4 flex gap-3">
+                  <StickyNote className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-foreground leading-relaxed">{exercise.obs}</p>
+                </div>
+              </Section>
+            )}
+
+            {/* Tags */}
+            {exercise.tags?.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {exercise.tags.map((tag, i) => (
+                  <span key={i} className="text-xs bg-muted text-muted-foreground px-3 py-1.5 rounded-full border border-border">{tag}</span>
+                ))}
               </div>
             )}
-            {exercise.tempo && (
-              <div className="bg-muted/60 rounded-xl p-3 flex items-center gap-2">
-                <Zap className="h-4 w-4 text-primary flex-shrink-0" />
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Tempo</p>
-                  <p className="text-sm font-semibold text-foreground">{exercise.tempo}</p>
-                </div>
-              </div>
+
+            {!ytId && !hasPrescricao && !hasInfo && !exercise.instructions && !exercise.tips && !exercise.obs && (
+              <div className="text-center py-10 text-muted-foreground text-sm">Nenhum detalhe cadastrado.</div>
             )}
           </div>
-
-          {/* Observações */}
-          {exercise.obs && (
-            <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-start gap-2">
-              <StickyNote className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-[10px] text-primary font-medium mb-0.5">Observações</p>
-                <p className="text-sm text-foreground leading-relaxed">{exercise.obs}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Sem vídeo e sem detalhes extras */}
-          {!ytId && !exercise.sets && !exercise.reps && !exercise.obs && (
-            <div className="text-center py-6 text-muted-foreground text-sm">
-              Nenhum detalhe adicional cadastrado.
-            </div>
-          )}
         </div>
+
+        {/* Rodapé */}
+        {exercise.video_url && (
+          <div className="px-4 py-3 border-t border-border flex-shrink-0 bg-card">
+            <a href={exercise.video_url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 text-xs text-primary hover:underline">
+              <Video className="h-3.5 w-3.5" />
+              Abrir vídeo em nova aba
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -157,11 +327,11 @@ const ExerciseDetailModal = ({ exercise, onClose }) => {
 const StudentWorkoutPage = () => {
   const { id: workoutId } = useParams();
   const navigate = useNavigate();
-  const { user, profile, logout } = useAuth();
+  const { user, profile, logout, loading: authLoading } = useAuth();
 
   const [workout, setWorkout] = useState(null);
   const [blocks, setBlocks] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [completedExercises, setCompletedExercises] = useState(new Set());
   const [expandedBlocks, setExpandedBlocks] = useState(new Set());
@@ -175,7 +345,7 @@ const StudentWorkoutPage = () => {
   const [detailExercise, setDetailExercise] = useState(null); // modal detalhes
 
   const loadWorkout = useCallback(async () => {
-    if (!user || !workoutId) return;
+    if (!user || !workoutId) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
@@ -246,11 +416,11 @@ const StudentWorkoutPage = () => {
         setActiveSession(session);
         const { data: logs } = await supabase
           .from("workout_exercise_logs")
-          .select("exercise_id")
+          .select("exercise_row_id")
           .eq("session_id", session.id)
-          .eq("completed", true);
+          ;
         if (logs?.length) {
-          setCompletedExercises(new Set(logs.map(l => l.exercise_id)));
+          setCompletedExercises(new Set(logs.map(l => l.exercise_row_id)));
         }
       }
     } catch (err) {
@@ -260,7 +430,11 @@ const StudentWorkoutPage = () => {
     }
   }, [user, workoutId]);
 
-  useEffect(() => { loadWorkout(); }, [loadWorkout]);
+  useEffect(() => {
+    if (authLoading) return;
+    if (user?.id && workoutId) loadWorkout();
+    else setLoading(false);
+  }, [user?.id, workoutId, authLoading]); // eslint-disable-line
 
   const toggleBlock = blockId => {
     setExpandedBlocks(prev => {
@@ -293,14 +467,20 @@ const StudentWorkoutPage = () => {
     try {
       if (isDone) {
         await supabase.from("workout_exercise_logs").delete()
-          .eq("session_id", activeSession.id).eq("exercise_id", exerciseId);
+          .eq("session_id", activeSession.id)
+          .eq("exercise_row_id", exerciseId);
       } else {
-        await supabase.from("workout_exercise_logs").upsert({
-          session_id: activeSession.id,
-          exercise_id: exerciseId,
-          completed: true,
-          completed_at: new Date().toISOString(),
-        });
+        // Tenta insert; se ja existe (unique), ignora
+        const { error: logErr } = await supabase
+          .from("workout_exercise_logs")
+          .insert({
+            session_id: activeSession.id,
+            student_workout_id: workout?.id ?? null,
+            student_id: user.id,
+            exercise_row_id: exerciseId,
+            completed_at: new Date().toISOString(),
+          });
+        if (logErr && logErr.code !== "23505") throw logErr;
       }
     } catch {
       setCompletedExercises(prev => {
@@ -316,8 +496,11 @@ const StudentWorkoutPage = () => {
     try {
       const today = new Date().toISOString().split("T")[0];
 
-      // Verifica se já existe sessão hoje (finished ou não)
-      const { data: existing } = await supabase
+      // Constraint: UNIQUE (student_id, workout_id, session_date)
+      // Só pode existir 1 sessão por aluno/treino/dia — nunca cria duplicata
+
+      // 1. Verifica se já existe sessão hoje para este treino (qualquer status)
+      const { data: todaySession } = await supabase
         .from("workout_sessions")
         .select("*")
         .eq("student_id", user.id)
@@ -325,32 +508,69 @@ const StudentWorkoutPage = () => {
         .eq("session_date", today)
         .maybeSingle();
 
-      if (existing) {
-        setActiveSession(existing);
-        toast.success("Treino retomado!");
+      if (todaySession) {
+        // Já existe — reativa se estava finalizada (novo ciclo no mesmo dia)
+        if (todaySession.status !== "active" || todaySession.finished) {
+          await supabase
+            .from("workout_sessions")
+            .update({ status: "active", finished: false, started_at: new Date().toISOString() })
+            .eq("id", todaySession.id);
+          setActiveSession({ ...todaySession, status: "active", finished: false });
+          setCompletedExercises(new Set());
+          toast.success("Novo ciclo iniciado! 💪");
+        } else {
+          // Já estava ativa — retoma
+          setActiveSession(todaySession);
+          toast.success("Treino retomado! 💪");
+        }
         return;
       }
 
-      // Cria nova sessão com upsert para evitar 409
-      const { data, error } = await supabase
+      // 2. Verifica se há outra sessão ativa (outro treino) e finaliza
+      const { data: otherActive } = await supabase
         .from("workout_sessions")
-        .upsert(
-          [{
-            student_id: user.id,
-            workout_id: workoutId,
-            session_date: today,
-            started_at: new Date().toISOString(),
-            status: "active",
-            finished: false,
-          }],
-          { onConflict: "student_id,workout_id,session_date", ignoreDuplicates: false }
-        )
-        .select()
-        .single();
+        .select("id")
+        .eq("student_id", user.id)
+        .eq("status", "active")
+        .maybeSingle();
 
-      if (error) throw error;
-      setActiveSession(data);
-      toast.success("Treino iniciado! 💪");
+      if (otherActive) {
+        await supabase
+          .from("workout_sessions")
+          .update({ status: "finished", finished: true, finished_at: new Date().toISOString(), completed_at: new Date().toISOString() })
+          .eq("id", otherActive.id);
+      }
+
+      // 3. Cria nova sessão
+      const { error: insertErr } = await supabase
+        .from("workout_sessions")
+        .insert({
+          student_id: user.id,
+          workout_id: workoutId,
+          session_date: today,
+          started_at: new Date().toISOString(),
+          status: "active",
+          finished: false,
+        });
+
+      if (insertErr) throw insertErr;
+
+      // 4. Busca a sessão criada
+      const { data: newSession } = await supabase
+        .from("workout_sessions")
+        .select("*")
+        .eq("student_id", user.id)
+        .eq("workout_id", workoutId)
+        .eq("session_date", today)
+        .maybeSingle();
+
+      if (newSession) {
+        setActiveSession(newSession);
+        setCompletedExercises(new Set());
+        toast.success("Treino iniciado! 💪");
+      } else {
+        throw new Error("Sessão criada mas não encontrada.");
+      }
     } catch (err) {
       toast.error("Erro ao iniciar: " + err.message);
     } finally {
@@ -363,8 +583,9 @@ const StudentWorkoutPage = () => {
     setFinishing(true);
     try {
       await supabase.from("workout_sessions").update({
-        completed: true, finished: true, status: "finished",
-        finished_at: new Date().toISOString(), completed_at: new Date().toISOString(),
+        finished: true, status: "finished",
+        finished_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
       }).eq("id", activeSession.id);
       setActiveSession(null);
       setShowFinishModal(false);
@@ -380,7 +601,7 @@ const StudentWorkoutPage = () => {
   const totalExercises = blocks.reduce((sum, b) => sum + b.exercises.length, 0);
   const completedCount = completedExercises.size;
   const progressPct = totalExercises > 0 ? Math.round((completedCount / totalExercises) * 100) : 0;
-  const isBlockCompleted = b => b.exercises.length > 0 && b.exercises.every(ex => completedExercises.has(ex.exercise_id));
+  const isBlockCompleted = b => b.exercises.length > 0 && b.exercises.every(ex => completedExercises.has(ex.exercise_row_id));
 
   return (
     <MobileContainer>
@@ -420,24 +641,39 @@ const StudentWorkoutPage = () => {
           </div>
 
         ) : isExpired ? (
-          <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-5 animate-fade-in">
-            <div className="h-20 w-20 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center">
-              <Lock className="h-10 w-10 text-destructive/60" />
+          <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-5 animate-fade-in">
+            <div className="h-24 w-24 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+              <Lock className="h-11 w-11 text-destructive/70" />
             </div>
-            <div>
-              <h2 className="text-xl font-display font-bold text-foreground mb-2">Treino Expirado</h2>
-              <p className="text-sm text-muted-foreground">
+            <div className="space-y-2">
+              <h2 className="text-2xl font-display font-bold text-foreground">Treino Expirado</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
                 {workout?.end_date
                   ? `Este treino expirou em ${new Date(workout.end_date + "T12:00:00").toLocaleDateString("pt-BR")}.`
                   : "Este treino não está mais disponível."}
               </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Entre em contato com seu personal para renovar seu plano.
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Entre em contato com seu personal trainer para renovar o acesso e voltar a treinar! 💪
               </p>
             </div>
-            <Button variant="outline" onClick={() => navigate("/student/workouts")} className="gap-2">
-              <ChevronLeft className="h-4 w-4" />Voltar para Meus Treinos
-            </Button>
+            <div className="flex flex-col gap-3 w-full max-w-[260px]">
+              <Button
+                variant="premium"
+                className="w-full gap-2 py-6 text-base"
+                onClick={() => {
+                  const msg = encodeURIComponent("Olá! Meu treino expirou e gostaria de renovar. 🏋️");
+                  window.open(`https://wa.me/5511949997913?text=${msg}`, "_blank");
+                }}
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                Falar com o Personal
+              </Button>
+              <Button variant="outline" onClick={() => navigate("/student/workouts")} className="w-full gap-2">
+                <ChevronLeft className="h-4 w-4" />Voltar para Meus Treinos
+              </Button>
+            </div>
           </div>
 
         ) : error ? (
@@ -538,7 +774,7 @@ const StudentWorkoutPage = () => {
                     {isExpanded && (
                       <div className="border-t border-border divide-y divide-border/50">
                         {block.exercises.map((ex, idx) => {
-                          const done = completedExercises.has(ex.exercise_id);
+                          const done = completedExercises.has(ex.exercise_row_id);
                           const ytId = getYoutubeId(ex.video_url);
                           const videoKey = ex.exercise_row_id || `${block.block_id}-${idx}`;
                           const videoOpen = expandedVideos.has(videoKey);
@@ -551,7 +787,7 @@ const StudentWorkoutPage = () => {
                                   "px-4 py-3 transition-colors duration-150 cursor-pointer",
                                   done ? "bg-green-500/5" : "hover:bg-muted/30"
                                 )}
-                                onClick={() => toggleExercise(ex.exercise_id)}
+                                onClick={() => toggleExercise(ex.exercise_row_id)}
                               >
                                 <div className="flex items-start gap-3">
                                   {/* Checkbox */}
@@ -679,24 +915,45 @@ const StudentWorkoutPage = () => {
       {!loading && !error && !isExpired && blocks.length > 0 && (
         <MobileFooter>
           {!activeSession ? (
-            <Button variant="premium" size="xl" className="w-full" onClick={handleStart} disabled={starting}>
+            <Button variant="premium" size="xl" className="w-full gap-2" onClick={handleStart} disabled={starting}>
               {starting
                 ? <><Loader2 className="h-5 w-5 animate-spin" />Iniciando...</>
-                : <><Play className="h-5 w-5" />Iniciar Treino</>}
+                : workout?.finished
+                  ? <><RefreshCw className="h-5 w-5" />Novo Ciclo — Repetir Treino</>
+                  : <><Play className="h-5 w-5" />Iniciar Treino</>
+              }
             </Button>
           ) : (
-            <Button
-              variant="premium"
-              size="xl"
-              className="w-full"
-              onClick={() => setShowFinishModal(true)}
-              disabled={completedCount === 0}
-            >
-              <CheckCircle2 className="h-5 w-5" />
-              {completedCount === 0
-                ? "Marque exercícios para finalizar"
-                : `Finalizar Treino (${completedCount}/${totalExercises})`}
-            </Button>
+            <div className="flex flex-col gap-2 w-full">
+              {/* Barra de progresso */}
+              {totalExercises > 0 && (
+                <div className="flex items-center gap-2 px-1">
+                  <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-500"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground font-medium tabular-nums">
+                    {completedCount}/{totalExercises}
+                  </span>
+                </div>
+              )}
+              <Button
+                variant="premium"
+                size="xl"
+                className="w-full gap-2"
+                onClick={() => setShowFinishModal(true)}
+                disabled={completedCount === 0}
+              >
+                <CheckCircle2 className="h-5 w-5" />
+                {completedCount === 0
+                  ? "Marque exercícios para finalizar"
+                  : completedCount === totalExercises
+                    ? "Finalizar Treino ✓"
+                    : `Finalizar Treino (${completedCount}/${totalExercises})`}
+              </Button>
+            </div>
           )}
         </MobileFooter>
       )}
@@ -709,40 +966,9 @@ const StudentWorkoutPage = () => {
         />
       )}
 
-      {/* Modal PDF */}
+      {/* Modal PDF — usa PDF.js via CDN para evitar bloqueio de iframe */}
       {showPdfModal && workout?.pdf_url && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/90 backdrop-blur-sm p-0 sm:p-4"
-          onClick={() => setShowPdfModal(false)}
-        >
-          <div
-            className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl overflow-hidden flex flex-col"
-            style={{ height: "90dvh" }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-primary" />
-                <span className="font-semibold text-sm text-foreground">PDF do Treino</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <a href={workout.pdf_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
-                  Abrir em nova aba
-                </a>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowPdfModal(false)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <iframe
-                src={`${workout.pdf_url}#toolbar=0&navpanes=0`}
-                className="w-full h-full"
-                title="Treino PDF"
-              />
-            </div>
-          </div>
-        </div>
+        <PdfModal url={workout.pdf_url} onClose={() => setShowPdfModal(false)} />
       )}
 
       {/* Modal finalizar */}
@@ -751,27 +977,61 @@ const StudentWorkoutPage = () => {
           <Card className="bg-card border-border w-full max-w-sm">
             <CardContent className="p-6 space-y-4">
               <div className="text-center">
-                <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3 border border-primary/20">
-                  <Trophy className="h-8 w-8 text-primary" />
+                <div className={cn(
+                  "h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-3 border",
+                  progressPct === 100
+                    ? "bg-green-500/10 border-green-500/20"
+                    : "bg-primary/10 border-primary/20"
+                )}>
+                  <Trophy className={cn("h-8 w-8", progressPct === 100 ? "text-green-400" : "text-primary")} />
                 </div>
-                <h3 className="text-lg font-display font-bold text-foreground">Finalizar Treino?</h3>
+                <h3 className="text-lg font-display font-bold text-foreground">
+                  {progressPct === 100 ? "Treino Concluído! 🏆" : "Finalizar Treino?"}
+                </h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Você completou {completedCount} de {totalExercises} exercícios ({progressPct}%).
+                  {progressPct === 100
+                    ? "Parabéns! Você completou todos os exercícios."
+                    : `Você completou ${completedCount} de ${totalExercises} exercícios (${progressPct}%).`}
                 </p>
               </div>
-              <div className="bg-muted rounded-xl p-3 space-y-2">
-                <div className="h-2 rounded-full bg-muted-foreground/20 overflow-hidden">
-                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
+
+              {/* Barra de progresso */}
+              <div className="space-y-1.5">
+                <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn("h-full rounded-full transition-all duration-500",
+                      progressPct === 100 ? "bg-green-400" : "bg-primary")}
+                    style={{ width: `${progressPct}%` }}
+                  />
                 </div>
-                <p className="text-xs text-center text-muted-foreground">{completedCount} exercícios concluídos</p>
+                <p className="text-xs text-center text-muted-foreground">
+                  {completedCount} de {totalExercises} exercícios
+                </p>
               </div>
+
+              {/* Aviso se incompleto */}
+              {progressPct < 100 && (
+                <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl px-3 py-2.5 text-xs text-orange-400 text-center">
+                  ⚠️ {totalExercises - completedCount} exercício{totalExercises - completedCount > 1 ? "s" : ""} ainda não foram marcados.
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Button variant="premium" className="w-full" onClick={handleFinish} disabled={finishing}>
+                <Button
+                  variant="premium"
+                  className={cn("w-full", progressPct === 100 && "bg-green-500 hover:bg-green-600 border-green-500")}
+                  onClick={handleFinish}
+                  disabled={finishing}
+                >
                   {finishing
                     ? <><Loader2 className="h-4 w-4 animate-spin" />Finalizando...</>
-                    : <><CheckCircle2 className="h-4 w-4" />Finalizar Mesmo Assim</>}
+                    : progressPct === 100
+                      ? <><CheckCircle2 className="h-4 w-4" />Concluir Treino</>
+                      : <><CheckCircle2 className="h-4 w-4" />Finalizar Mesmo Assim</>
+                  }
                 </Button>
-                <Button variant="ghost" className="w-full" onClick={() => setShowFinishModal(false)}>
+                <Button variant="ghost" className="w-full text-muted-foreground"
+                  onClick={() => setShowFinishModal(false)}>
                   Continuar Treinando
                 </Button>
               </div>

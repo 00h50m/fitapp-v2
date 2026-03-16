@@ -52,7 +52,7 @@ const ExercisesPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingExercise, setEditingExercise] = useState(null);
   const [deleteExercise, setDeleteExercise] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const loadExercises = useCallback(async () => {
@@ -61,7 +61,6 @@ const ExercisesPage = () => {
       const { data, error } = await supabase
         .from("exercises")
         .select("*")
-        .eq("is_active", true)
         .order("title", { ascending: true });
       if (error) throw error;
       setExercises(data || []);
@@ -99,11 +98,17 @@ const ExercisesPage = () => {
           .from("exercises")
           .update({
             title: exerciseData.title.trim(),
-            description: exerciseData.description || null,
+            default_description: exerciseData.description || null,
             video_url: exerciseData.video_url || null,
             muscle_group: exerciseData.muscle_group || null,
+            secondary_muscles: exerciseData.secondary_muscles?.length ? exerciseData.secondary_muscles : null,
             equipment: exerciseData.equipment || null,
             difficulty: exerciseData.difficulty || null,
+            category: exerciseData.category || null,
+            mechanics: exerciseData.mechanics || null,
+            force: exerciseData.force || null,
+            instructions: exerciseData.instructions || null,
+            tips: exerciseData.tips || null,
           })
           .eq("id", editingExercise.id);
         if (error) {
@@ -119,11 +124,17 @@ const ExercisesPage = () => {
           .from("exercises")
           .insert([{
             title: exerciseData.title.trim(),
-            description: exerciseData.description || null,
+            default_description: exerciseData.description || null,
             video_url: exerciseData.video_url || null,
             muscle_group: exerciseData.muscle_group || null,
+            secondary_muscles: exerciseData.secondary_muscles?.length ? exerciseData.secondary_muscles : null,
             equipment: exerciseData.equipment || null,
             difficulty: exerciseData.difficulty || null,
+            category: exerciseData.category || null,
+            mechanics: exerciseData.mechanics || null,
+            force: exerciseData.force || null,
+            instructions: exerciseData.instructions || null,
+            tips: exerciseData.tips || null,
             is_active: true,
           }]);
         if (error) {

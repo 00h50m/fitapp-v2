@@ -13,10 +13,11 @@ import StudentWorkoutsPage from "@/pages/student/StudentWorkoutsPage";
 import StudentWorkoutPage from "@/pages/student/StudentWorkoutPage";
 
 // Admin Pages
-import DashboardPage from "@/pages/admin/DashboardPage";
-import AdminAlunosPage from "@/pages/admin/AdminAlunosPage";
-import CreateStudentPage from "@/pages/admin/CreateStudentPage";
-import ExerciciosPage from "@/pages/admin/ExerciciosPage";
+import DashboardPage       from "@/pages/admin/DashboardPage";
+import AdminAlunosPage     from "@/pages/admin/AdminAlunosPage";
+import AdminAlunoDetailPage from "@/pages/admin/AdminAlunoDetailPage.jsx";
+import CreateStudentPage   from "@/pages/admin/CreateStudentPage";
+import ExerciciosPage      from "@/pages/admin/ExerciciosPage";
 
 // Treinos Pages
 import {
@@ -29,7 +30,6 @@ import {
 // ── Redirect inteligente por role ──────────────────────────────────────────
 const RedirectByRole = () => {
   const { user, isAdmin, loading } = useAuth();
-
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -37,7 +37,6 @@ const RedirectByRole = () => {
       </div>
     );
   }
-
   if (!user) return <Navigate to="/login" replace />;
   if (isAdmin) return <Navigate to="/admin" replace />;
   return <Navigate to="/student" replace />;
@@ -47,52 +46,30 @@ function AppRoutes() {
   return (
     <Routes>
       {/* PUBLIC */}
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        }
-      />
+      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
 
-      {/* STUDENT — abre sempre na lista de treinos */}
-      <Route
-        path="/student"
-        element={
-          <ProtectedRoute>
-            <StudentWorkoutsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/student/workout/:id"
-        element={
-          <ProtectedRoute>
-            <StudentWorkoutPage />
-          </ProtectedRoute>
-        }
-      />
+      {/* STUDENT */}
+      <Route path="/student"            element={<ProtectedRoute><StudentWorkoutsPage /></ProtectedRoute>} />
+      <Route path="/student/workout/:id" element={<ProtectedRoute><StudentWorkoutPage /></ProtectedRoute>} />
 
-      {/* Compatibilidade com rotas antigas */}
-      <Route path="/app" element={<Navigate to="/student" replace />} />
+      {/* Compatibilidade */}
+      <Route path="/app"              element={<Navigate to="/student" replace />} />
       <Route path="/student/workouts" element={<Navigate to="/student" replace />} />
 
       {/* ADMIN */}
-      <Route path="/admin" element={<AdminRoute><DashboardPage /></AdminRoute>} />
-      <Route path="/admin/alunos" element={<AdminRoute><AdminAlunosPage /></AdminRoute>} />
-      <Route path="/admin/alunos/novo" element={<AdminRoute><CreateStudentPage /></AdminRoute>} />
-      <Route path="/admin/exercicios" element={<AdminRoute><ExerciciosPage /></AdminRoute>} />
-      <Route path="/admin/treinos/exercicios" element={<AdminRoute><TreinosExercisesPage /></AdminRoute>} />
-      <Route path="/admin/treinos/templates" element={<AdminRoute><WorkoutsPage /></AdminRoute>} />
-      <Route path="/admin/treinos/editor/:id" element={<AdminRoute><WorkoutEditorPage /></AdminRoute>} />
+      <Route path="/admin"                        element={<AdminRoute><DashboardPage /></AdminRoute>} />
+      <Route path="/admin/alunos"                 element={<AdminRoute><AdminAlunosPage /></AdminRoute>} />
+      <Route path="/admin/alunos/novo"            element={<AdminRoute><CreateStudentPage /></AdminRoute>} />
+      <Route path="/admin/alunos/:id"             element={<AdminRoute><AdminAlunoDetailPage /></AdminRoute>} />
+      <Route path="/admin/exercicios"             element={<AdminRoute><ExerciciosPage /></AdminRoute>} />
+      <Route path="/admin/treinos/exercicios"     element={<AdminRoute><TreinosExercisesPage /></AdminRoute>} />
+      <Route path="/admin/treinos/templates"      element={<AdminRoute><WorkoutsPage /></AdminRoute>} />
+      <Route path="/admin/treinos/editor/:id"     element={<AdminRoute><WorkoutEditorPage /></AdminRoute>} />
       <Route path="/admin/treinos/personalizados" element={<AdminRoute><CustomWorkoutsPage /></AdminRoute>} />
 
-      {/* HOME */}
-      <Route path="/" element={<RedirectByRole />} />
-
-      {/* FALLBACK */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* HOME / FALLBACK */}
+      <Route path="/"  element={<RedirectByRole />} />
+      <Route path="*"  element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

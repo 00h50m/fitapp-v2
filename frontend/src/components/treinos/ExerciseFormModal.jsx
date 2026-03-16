@@ -1,239 +1,311 @@
 import React, { useState, useEffect } from "react";
-import {
-  Dialog, DialogContent, DialogHeader,
-  DialogTitle, DialogDescription, DialogFooter,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select, SelectContent, SelectItem,
-  SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import { Save, X, Video, Loader2, AlertCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Save, Loader2, Play, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const muscleGroupOptions = [
-  { value: "chest", label: "Peito" },
-  { value: "back", label: "Costas" },
-  { value: "legs", label: "Pernas" },
-  { value: "shoulders", label: "Ombros" },
-  { value: "biceps", label: "Bíceps" },
-  { value: "triceps", label: "Tríceps" },
-  { value: "core", label: "Core / Abdômen" },
-  { value: "glutes", label: "Glúteos" },
-  { value: "cardio", label: "Cardio" },
-  { value: "full_body", label: "Corpo Inteiro" },
+const SEL = "w-full bg-muted border border-border text-foreground rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
+
+const muscleOptions = [
+  { value: "chest",       label: "Peitoral" },
+  { value: "back",        label: "Costas" },
+  { value: "shoulders",   label: "Ombros" },
+  { value: "biceps",      label: "Bíceps" },
+  { value: "triceps",     label: "Tríceps" },
+  { value: "forearms",    label: "Antebraço" },
+  { value: "core",        label: "Core/Abdômen" },
+  { value: "glutes",      label: "Glúteos" },
+  { value: "legs",        label: "Pernas" },
+  { value: "calves",      label: "Panturrilha" },
+  { value: "full_body",   label: "Corpo Inteiro" },
+  { value: "cardio",      label: "Cardio" },
 ];
 
 const equipmentOptions = [
-  { value: "barbell", label: "Barra" },
-  { value: "dumbbell", label: "Halteres" },
-  { value: "machine", label: "Máquina" },
-  { value: "cable", label: "Cabo / Polia" },
-  { value: "bodyweight", label: "Peso Corporal" },
-  { value: "kettlebell", label: "Kettlebell" },
-  { value: "resistance_band", label: "Elástico" },
-  { value: "none", label: "Sem Equipamento" },
+  { value: "barbell",     label: "Barra" },
+  { value: "dumbbell",    label: "Haltere" },
+  { value: "cable",       label: "Cabo/Polia" },
+  { value: "machine",     label: "Máquina" },
+  { value: "bodyweight",  label: "Peso Corporal" },
+  { value: "kettlebell",  label: "Kettlebell" },
+  { value: "band",        label: "Elástico" },
+  { value: "smith",       label: "Smith" },
+  { value: "other",       label: "Outro" },
 ];
 
 const difficultyOptions = [
-  { value: "beginner", label: "Iniciante" },
+  { value: "beginner",     label: "Iniciante" },
   { value: "intermediate", label: "Intermediário" },
-  { value: "advanced", label: "Avançado" },
+  { value: "advanced",     label: "Avançado" },
 ];
 
-const getEmbedUrl = (url) => {
-  if (!url) return "";
-  if (url.includes("/embed/")) return url;
-  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
-  return m ? `https://www.youtube.com/embed/${m[1]}` : "";
+const categoryOptions = [
+  { value: "strength",    label: "Força" },
+  { value: "hypertrophy", label: "Hipertrofia" },
+  { value: "endurance",   label: "Resistência" },
+  { value: "mobility",    label: "Mobilidade" },
+  { value: "cardio",      label: "Cardio" },
+];
+
+const mechanicsOptions = [
+  { value: "compound",   label: "Composto" },
+  { value: "isolation",  label: "Isolado" },
+];
+
+const forceOptions = [
+  { value: "push", label: "Empurrar" },
+  { value: "pull", label: "Puxar" },
+  { value: "legs", label: "Pernas" },
+  { value: "core", label: "Core" },
+];
+
+const getYoutubeId = (url) => {
+  if (!url) return null;
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
 };
 
-const ExerciseFormModal = ({ isOpen, onClose, exercise, onSave }) => {
-  const isEditing = !!exercise;
-  const [formData, setFormData] = useState({
-    title: "", description: "", video_url: "",
-    muscle_group: "", equipment: "", difficulty: "",
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const embedUrl = getEmbedUrl(formData.video_url);
+const EMPTY = {
+  title: "", description: "", video_url: "",
+  muscle_group: "", secondary_muscles: [],
+  equipment: "", difficulty: "", category: "",
+  mechanics: "", force: "", instructions: "", tips: "",
+};
 
-  // Reset form when modal opens/exercise changes
+const ExerciseFormModal = ({ isOpen, onClose, onSave, exercise }) => {
+  const [form, setForm]       = useState(EMPTY);
+  const [saving, setSaving]   = useState(false);
+  const [videoPreview, setVideoPreview] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
-      setFormData({
-        title: exercise?.title ?? exercise?.name ?? "",
-        description: exercise?.description ?? "",
-        video_url: exercise?.video_url ?? "",
-        muscle_group: exercise?.muscle_group ?? "",
-        equipment: exercise?.equipment ?? "",
-        difficulty: exercise?.difficulty ?? "",
-      });
-      setError(null);
-      setSaving(false);
+      if (exercise) {
+        setForm({
+          title:             exercise.title || "",
+          description:       exercise.default_description || exercise.description || "",
+          video_url:         exercise.video_url || "",
+          muscle_group:      exercise.muscle_group || "",
+          secondary_muscles: exercise.secondary_muscles || [],
+          equipment:         exercise.equipment || "",
+          difficulty:        exercise.difficulty || "",
+          category:          exercise.category || "",
+          mechanics:         exercise.mechanics || "",
+          force:             exercise.force || "",
+          instructions:      exercise.instructions || "",
+          tips:              exercise.tips || "",
+        });
+      } else {
+        setForm(EMPTY);
+      }
+      setVideoPreview(false);
     }
   }, [isOpen, exercise]);
 
-  const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    if (error) setError(null);
+  const set = (field, value) => setForm(p => ({ ...p, [field]: value }));
+
+  const toggleSecondary = (val) => {
+    setForm(p => ({
+      ...p,
+      secondary_muscles: p.secondary_muscles.includes(val)
+        ? p.secondary_muscles.filter(m => m !== val)
+        : [...p.secondary_muscles, val],
+    }));
   };
 
   const handleSubmit = async () => {
-    if (!formData.title.trim()) {
-      setError("Nome do exercício é obrigatório");
-      return;
-    }
+    if (!form.title.trim()) { return; }
     setSaving(true);
-    setError(null);
-    const result = await onSave({
-      ...formData,
-      id: exercise?.id,
-    });
-    // onSave retorna false em caso de duplicata — modal NÃO fecha
-    if (result === false) {
-      setSaving(false);
-      setError("Já existe um exercício com esse nome.");
-    } else {
-      setSaving(false);
-      // modal fechado pelo pai
-    }
+    const ok = await onSave({ ...form, id: exercise?.id });
+    setSaving(false);
+    if (ok !== false) onClose();
   };
+
+  const ytId = getYoutubeId(form.video_url);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-card border-border max-w-2xl max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-display text-foreground">
-            {isEditing ? "Editar Exercício" : "Novo Exercício"}
+      <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-5 pb-4 border-b border-border flex-shrink-0">
+          <DialogTitle className="text-lg font-display">
+            {exercise ? "Editar Exercício" : "Novo Exercício"}
           </DialogTitle>
-          <DialogDescription>
-            {isEditing ? "Atualize as informações do exercício" : "Preencha os dados do novo exercício"}
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Error banner */}
-          {error && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              {error}
-            </div>
-          )}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
 
           {/* Nome */}
-          <div className="space-y-2">
-            <Label htmlFor="title">Nome do Exercício *</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Nome do Exercício *</Label>
             <Input
-              id="title"
-              value={formData.title}
-              onChange={(e) => handleChange("title", e.target.value)}
               placeholder="Ex: Supino Reto com Barra"
+              value={form.title}
+              onChange={e => set("title", e.target.value)}
               className="bg-muted border-border"
             />
           </div>
 
           {/* Descrição */}
-          <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => handleChange("description", e.target.value)}
-              placeholder="Descreva a execução do exercício..."
-              className="bg-muted border-border min-h-[80px]"
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Descrição</Label>
+            <textarea
+              className={cn(SEL, "resize-none")}
+              rows={2}
+              placeholder="Descreva o exercício brevemente..."
+              value={form.description}
+              onChange={e => set("description", e.target.value)}
             />
           </div>
 
-          {/* URL Vídeo */}
-          <div className="space-y-2">
-            <Label htmlFor="video_url">URL do Vídeo (YouTube)</Label>
-            <Input
-              id="video_url"
-              value={formData.video_url}
-              onChange={(e) => handleChange("video_url", e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
-              className="bg-muted border-border"
-            />
-            {/* Embed preview */}
-            {embedUrl ? (
-              <div className="mt-2">
-                <p className="text-xs text-muted-foreground flex items-center gap-1 mb-2">
-                  <Video className="h-3 w-3" />Pré-visualização do vídeo
-                </p>
-                <div className="aspect-video rounded-lg overflow-hidden bg-muted border border-border">
-                  <iframe
-                    src={embedUrl}
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    title="Video preview"
-                  />
-                </div>
+          {/* URL do Vídeo */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">URL do Vídeo (YouTube)</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={form.video_url}
+                onChange={e => { set("video_url", e.target.value); setVideoPreview(false); }}
+                className="bg-muted border-border flex-1"
+              />
+              {ytId && (
+                <Button variant="outline" size="icon" onClick={() => setVideoPreview(p => !p)}>
+                  <Play className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            {videoPreview && ytId && (
+              <div className="rounded-xl overflow-hidden aspect-video bg-black mt-2">
+                <iframe
+                  src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
+                  className="w-full h-full"
+                  allowFullScreen
+                  title="Preview"
+                />
               </div>
-            ) : formData.video_url ? (
-              <p className="text-xs text-destructive/70 mt-1">
-                URL inválida — use um link do YouTube (youtube.com/watch?v=... ou youtu.be/...)
+            )}
+            {ytId && !videoPreview && (
+              <p className="text-xs text-primary cursor-pointer hover:underline" onClick={() => setVideoPreview(true)}>
+                ▶ Pré-visualização do vídeo
               </p>
-            ) : null}
+            )}
           </div>
 
-          {/* Grupo Muscular / Equipamento / Dificuldade */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Grupo Muscular</Label>
-              <Select value={formData.muscle_group} onValueChange={(v) => handleChange("muscle_group", v)}>
-                <SelectTrigger className="bg-muted border-border">
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {muscleGroupOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* Grupo Muscular + Equipamento + Dificuldade */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Grupo Muscular</Label>
+              <select className={SEL} value={form.muscle_group} onChange={e => set("muscle_group", e.target.value)}>
+                <option value="">Selecione...</option>
+                {muscleOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
             </div>
-            <div className="space-y-2">
-              <Label>Equipamento</Label>
-              <Select value={formData.equipment} onValueChange={(v) => handleChange("equipment", v)}>
-                <SelectTrigger className="bg-muted border-border">
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {equipmentOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Equipamento</Label>
+              <select className={SEL} value={form.equipment} onChange={e => set("equipment", e.target.value)}>
+                <option value="">Selecione...</option>
+                {equipmentOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
             </div>
-            <div className="space-y-2">
-              <Label>Dificuldade</Label>
-              <Select value={formData.difficulty} onValueChange={(v) => handleChange("difficulty", v)}>
-                <SelectTrigger className="bg-muted border-border">
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {difficultyOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Dificuldade</Label>
+              <select className={SEL} value={form.difficulty} onChange={e => set("difficulty", e.target.value)}>
+                <option value="">Selecione...</option>
+                {difficultyOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
             </div>
           </div>
+
+          {/* Categoria + Mecânica + Força */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Categoria</Label>
+              <select className={SEL} value={form.category} onChange={e => set("category", e.target.value)}>
+                <option value="">Selecione...</option>
+                {categoryOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Mecânica</Label>
+              <select className={SEL} value={form.mechanics} onChange={e => set("mechanics", e.target.value)}>
+                <option value="">Selecione...</option>
+                {mechanicsOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Tipo de Força</Label>
+              <select className={SEL} value={form.force} onChange={e => set("force", e.target.value)}>
+                <option value="">Selecione...</option>
+                {forceOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Músculos Secundários */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Músculos Secundários</Label>
+            <div className="flex flex-wrap gap-2">
+              {muscleOptions.map(o => {
+                const selected = form.secondary_muscles.includes(o.value);
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => toggleSecondary(o.value)}
+                    className={cn(
+                      "text-xs px-2.5 py-1 rounded-full border transition-all",
+                      selected
+                        ? "bg-primary/20 border-primary/40 text-primary"
+                        : "bg-muted border-border text-muted-foreground hover:border-primary/30"
+                    )}
+                  >
+                    {selected && <span className="mr-1">✓</span>}
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Instruções */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Como Executar (Instruções)</Label>
+            <textarea
+              className={cn(SEL, "resize-none")}
+              rows={4}
+              placeholder="Descreva o passo a passo da execução do exercício..."
+              value={form.instructions}
+              onChange={e => set("instructions", e.target.value)}
+            />
+          </div>
+
+          {/* Dicas */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Dicas do Treinador</Label>
+            <textarea
+              className={cn(SEL, "resize-none")}
+              rows={3}
+              placeholder="Dicas para melhorar a execução, evitar erros comuns..."
+              value={form.tips}
+              onChange={e => set("tips", e.target.value)}
+            />
+          </div>
+
         </div>
 
-        <DialogFooter className="gap-2 pt-4">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
-            <X className="h-4 w-4 mr-2" />Cancelar
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-border flex-shrink-0">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            <X className="h-4 w-4 mr-1.5" />Cancelar
           </Button>
-          <Button variant="premium" onClick={handleSubmit} disabled={saving}>
+          <Button variant="premium" onClick={handleSubmit} disabled={saving || !form.title.trim()}>
             {saving
-              ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</>
-              : <><Save className="h-4 w-4 mr-2" />{isEditing ? "Salvar Alterações" : "Criar Exercício"}</>}
+              ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Salvando...</>
+              : <><Save className="h-4 w-4 mr-1.5" />{exercise ? "Salvar Alterações" : "Criar Exercício"}</>
+            }
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

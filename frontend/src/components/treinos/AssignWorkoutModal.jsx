@@ -15,6 +15,16 @@ import { supabase } from "@/lib/supabase";
 import { copyTemplateToStudent } from "@/services/workoutService";
 import { toast } from "sonner";
 
+
+// Normaliza data para YYYY-MM-DD independente do formato vindo do banco
+const toDateInput = (val) => {
+  if (!val) return "";
+  // Se já é YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  // Se é ISO timestamp
+  return val.split("T")[0];
+};
+
 const AssignWorkoutModal = ({ isOpen, onClose, onSave, workout = null }) => {
   const isEditMode = !!workout;
 
@@ -38,8 +48,8 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave, workout = null }) => {
       setFormData({
         student_id: workout.student_id || "",
         template_id: workout.template_id || "",
-        start_date: workout.start_date || new Date().toISOString().split("T")[0],
-        end_date: workout.end_date || "",
+        start_date: toDateInput(workout.start_date) || new Date().toISOString().split("T")[0],
+        end_date: toDateInput(workout.end_date) || "",
       });
     } else {
       setFormData({
@@ -102,24 +112,24 @@ const AssignWorkoutModal = ({ isOpen, onClose, onSave, workout = null }) => {
 
       if (isEditMode) {
         // Modo edição — só atualiza datas e status
-        const { data: updated, error } = await supabase
+        const { error } = await supabase
           .from("student_workouts")
           .update({
             start_date: formData.start_date,
             end_date: formData.end_date,
             status: "active",
           })
-          .eq("id", workout.id)
-          .select()
-          .single();
+          .eq("id", workout.id);
 
         if (error) throw error;
 
         toast.success("Treino atualizado!");
+        // Retorna objeto montado localmente (sem re-fetch para evitar body stream)
         onSave?.({
-          ...updated,
-          student_name: workout.student_name || student?.name || "Aluno",
-          workout_name: workout.workout_name || updated.title || "Treino",
+          ...workout,
+          start_date: formData.start_date,
+          end_date: formData.end_date,
+          status: "active",
         });
       } else {
         // Modo criação — cria student_workout + copia blocos

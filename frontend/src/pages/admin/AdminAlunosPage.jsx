@@ -8,20 +8,19 @@ import { Input } from "@/components/ui/input";
 import {
   Users, Plus, Search, RefreshCw, Loader2,
   AlertCircle, ChevronRight, Calendar, Mail,
-  CheckCircle2, Clock, UserX,
+  CheckCircle2, Clock, UserX, ShieldOff,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-function getAccessStatus(access_end) {
-  if (!access_end) return { label: "Sem data", variant: "secondary", icon: Clock };
-  const end = new Date(access_end + "T23:59");
-  const now = new Date();
-  const diffDays = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) return { label: "Expirado", variant: "destructive", icon: UserX };
-  if (diffDays <= 7) return { label: `Expira em ${diffDays}d`, variant: "warning", icon: Clock };
-  return { label: "Ativo", variant: "success", icon: CheckCircle2 };
+function getAccessStatus(access_end, is_active) {
+  if (is_active === false) return { label: "Inativo", variant: "secondary" };
+  if (!access_end) return { label: "Sem data", variant: "secondary" };
+  const diff = Math.ceil((new Date(access_end + "T23:59") - new Date()) / 86400000);
+  if (diff < 0)  return { label: "Expirado",         variant: "destructive" };
+  if (diff <= 7) return { label: `Expira em ${diff}d`, variant: "warning" };
+  return { label: "Ativo", variant: "success" };
 }
 
 function getInitials(name) {
@@ -37,23 +36,33 @@ function getHue(str) {
   return HUES[h];
 }
 
+const TABS = [
+  { key: "all",      label: "Todos" },
+  { key: "active",   label: "Ativos" },
+  { key: "expired",  label: "Expirados" },
+  { key: "inactive", label: "Inativos" },
+];
+
 const AdminAlunosPage = () => {
   const navigate = useNavigate();
-  const [alunos, setAlunos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [search, setSearch] = useState("");
+  const [alunos, setAlunos]   = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+  const [search, setSearch]   = useState("");
+  const [tab, setTab]         = useState("all");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Colunas corretas conforme schema real da tabela profiles
+      // Busca todos os profiles que NÃO são admin
+      // Inclui role = 'student', role = null (recém criados) e is_active = false
       const { data, error: err } = await supabase
         .from("profiles")
-        .select("id, name, email, phone, access_end, training_level, plan, created_at")
-        .eq("role", "student")
-        .order("name", { ascending: true });
+        .select("id, user_id, name, email, phone, access_end, access_start, is_active, training_level, plan, created_at, role")
+        .order("created_at", { ascending: false });
+      // filtra admins no frontend para evitar problemas com .or() no PostgREST
+      if (data) data.splice(0, data.length, ...data.filter(p => p.role !== "admin"));
 
       if (err) throw err;
       setAlunos(data || []);
@@ -67,21 +76,41 @@ const AdminAlunosPage = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = alunos.filter(a => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return a.name?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q);
+  // Filtra por aba
+  const byTab = alunos.filter(a => {
+    if (tab === "all") return true;
+    if (tab === "inactive") return a.is_active === false;
+    if (tab === "active") {
+      if (!a.is_active && a.is_active !== null) return false;
+      if (!a.access_end) return false;
+      return new Date(a.access_end + "T23:59") >= new Date();
+    }
+    if (tab === "expired") {
+      if (a.is_active === false) return false;
+      if (!a.access_end) return false;
+      return new Date(a.access_end + "T23:59") < new Date();
+    }
+    return true;
   });
 
-  const total = alunos.length;
-  const ativos = alunos.filter(a => {
-    if (!a.access_end) return false;
-    return new Date(a.access_end + "T23:59") >= new Date();
-  }).length;
+  // Filtra por busca
+  const filtered = byTab.filter(a => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (a.name || "").toLowerCase().includes(q) || (a.email || "").toLowerCase().includes(q);
+  });
+
+  // Contadores para badges nas abas
+  const counts = {
+    all:      alunos.length,
+    active:   alunos.filter(a => a.is_active !== false && a.access_end && new Date(a.access_end + "T23:59") >= new Date()).length,
+    expired:  alunos.filter(a => a.is_active !== false && a.access_end && new Date(a.access_end + "T23:59") < new Date()).length,
+    inactive: alunos.filter(a => a.is_active === false).length,
+  };
 
   return (
     <AdminLayout>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-5 animate-fade-in">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -94,63 +123,51 @@ const AdminAlunosPage = () => {
               <p className="text-sm text-muted-foreground">Gerencie os alunos e suas sessões de treino</p>
             </div>
           </div>
-          <Button
-            variant="premium"
-            className="gap-2 w-full sm:w-auto"
-            onClick={() => navigate("/admin/alunos/novo")}
-          >
-            <Plus className="h-4 w-4" />
-            Novo Aluno
+          <Button variant="premium" className="gap-2 w-full sm:w-auto"
+            onClick={() => navigate("/admin/alunos/novo")}>
+            <Plus className="h-4 w-4" />Novo Aluno
           </Button>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <Card className="bg-card border-border">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                  <Users className="h-4 w-4 text-primary" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: "Total",    value: counts.all,      icon: Users,        color: "primary" },
+            { label: "Ativos",   value: counts.active,   icon: CheckCircle2, color: "green" },
+            { label: "Expirados",value: counts.expired,  icon: Clock,        color: "orange" },
+            { label: "Inativos", value: counts.inactive, icon: ShieldOff,    color: "red" },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <Card key={label} className="bg-card border-border cursor-pointer hover:border-primary/30 transition-colors"
+              onClick={() => setTab(label === "Total" ? "all" : label.toLowerCase())}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center border flex-shrink-0",
+                    color === "primary" ? "bg-primary/10 border-primary/20" :
+                    color === "green"   ? "bg-green-500/10 border-green-500/20" :
+                    color === "orange"  ? "bg-orange-500/10 border-orange-500/20" :
+                    "bg-red-500/10 border-red-500/20"
+                  )}>
+                    <Icon className={cn("h-4 w-4",
+                      color === "primary" ? "text-primary" :
+                      color === "green"   ? "text-green-400" :
+                      color === "orange"  ? "text-orange-400" :
+                      "text-red-400"
+                    )} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">{loading ? "—" : value}</p>
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{loading ? "—" : total}</p>
-                  <p className="text-xs text-muted-foreground">Total de Alunos</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-card border-border">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center flex-shrink-0">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{loading ? "—" : ativos}</p>
-                  <p className="text-xs text-muted-foreground">Ativos</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-card border-border col-span-2 sm:col-span-1">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center justify-center flex-shrink-0">
-                  <UserX className="h-4 w-4 text-destructive" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{loading ? "—" : total - ativos}</p>
-                  <p className="text-xs text-muted-foreground">Expirados/Sem plano</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
-        {/* Lista */}
+        {/* Lista com abas */}
         <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <CardHeader className="pb-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
               <CardTitle className="text-base font-display">Lista de Alunos</CardTitle>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1 sm:w-64">
@@ -166,6 +183,30 @@ const AdminAlunosPage = () => {
                   <RefreshCw className="h-3.5 w-3.5" />
                 </Button>
               </div>
+            </div>
+
+            {/* Abas */}
+            <div className="flex gap-1 border-b border-border -mx-6 px-6 overflow-x-auto">
+              {TABS.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                    tab === t.key
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {t.label}
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full font-semibold",
+                    tab === t.key ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                  )}>
+                    {counts[t.key]}
+                  </span>
+                </button>
+              ))}
             </div>
           </CardHeader>
 
@@ -186,28 +227,32 @@ const AdminAlunosPage = () => {
               <div className="py-12 text-center px-4">
                 <Users className="h-8 w-8 mx-auto text-muted-foreground/30 mb-3" />
                 <p className="text-sm text-muted-foreground">
-                  {search ? `Nenhum aluno encontrado para "${search}"` : "Nenhum aluno cadastrado"}
+                  {search ? `Nenhum aluno encontrado para "${search}"` : "Nenhum aluno nesta categoria"}
                 </p>
               </div>
             ) : (
               <div className="divide-y divide-border">
                 {filtered.map(aluno => {
-                  const status = getAccessStatus(aluno.access_end);
-                  const initials = getInitials(aluno.name);
-                  const hue = getHue(aluno.name);
+                  const status   = getAccessStatus(aluno.access_end, aluno.is_active);
+                  const initials = getInitials(aluno.name || aluno.email);
+                  const hue      = getHue(aluno.name || aluno.email);
+                  const isInactive = aluno.is_active === false;
 
                   return (
                     <div
                       key={aluno.id}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer"
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer",
+                        isInactive && "opacity-60"
+                      )}
                       onClick={() => navigate(`/admin/alunos/${aluno.id}`)}
                     >
                       <div
                         className="h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border"
                         style={{
-                          background: `hsl(${hue} 60% 20%)`,
-                          borderColor: `hsl(${hue} 60% 30%)`,
-                          color: `hsl(${hue} 80% 70%)`,
+                          background:   `hsl(${hue} 60% 20%)`,
+                          borderColor:  `hsl(${hue} 60% 30%)`,
+                          color:        `hsl(${hue} 80% 70%)`,
                         }}
                       >
                         {initials}
@@ -215,11 +260,14 @@ const AdminAlunosPage = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-foreground truncate">
-                            {aluno.name || "Sem nome"}
+                            {aluno.name || aluno.email?.split("@")[0] || "Sem nome"}
                           </p>
                           <Badge variant={status.variant} className="text-[10px] flex-shrink-0">
                             {status.label}
                           </Badge>
+                          {isInactive && (
+                            <ShieldOff className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                          )}
                         </div>
                         <div className="flex items-center gap-3 mt-0.5">
                           {aluno.email && (

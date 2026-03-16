@@ -5,10 +5,9 @@ const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // Desabilita navigator.locks — evita AbortError no React StrictMode
-    lock: undefined,
     autoRefreshToken: true,
-    persistSession: true,
+    persistSession: true,      // mantém sessão no localStorage
     detectSessionInUrl: false,
+    storageKey: "fitapp-auth", // chave única no localStorage
   },
 });

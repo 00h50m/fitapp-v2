@@ -1,96 +1,90 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
 const AuthContext = createContext({});
 
 export const AuthProvider = ({ children }) => {
-  const [session, setSession]   = useState(null);
-  const [user, setUser]         = useState(null);
-  const [profile, setProfile]   = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const mountedRef              = useRef(true);
+  const [user,    setUser]    = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const mountedRef   = useRef(true);
+  const initDoneRef  = useRef(false);
+  const ignoreSIGNIN = useRef(false); // bloqueia SIGNED_IN do signup de aluno
 
-  const loadProfile = async (userId) => {
+  const loadProfile = useCallback(async (userId) => {
+    if (!userId) return null;
     try {
-      // Tenta primeiro por user_id (coluna real da tabela conforme schema)
-      let { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      // Fallback: tenta por id (caso profiles.id == auth.uid)
-      if (!data && !error) {
-        const res = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", userId)
-          .maybeSingle();
-        data  = res.data;
-        error = res.error;
+      let { data } = await supabase
+        .from("profiles").select("*").eq("user_id", userId).maybeSingle();
+      if (!data) {
+        const r = await supabase
+          .from("profiles").select("*").eq("id", userId).maybeSingle();
+        data = r.data;
       }
-
-      if (!mountedRef.current) return;
-      if (error) {
-        const isAbort = err?.name === "AbortError" || err?.message?.includes("aborted");
-        if (!isAbort) console.error("loadProfile error:", error);
-      }
-      setProfile(data ?? null);
-    } catch (err) {
-      const isAbort = err?.name === "AbortError" || err?.message?.includes("aborted");
-      if (!isAbort) console.error("loadProfile error:", err);
-      if (mountedRef.current) setProfile(null);
-    }
-  };
+      return data ?? null;
+    } catch { return null; }
+  }, []);
 
   useEffect(() => {
-    mountedRef.current = true;
+    mountedRef.current  = true;
+    initDoneRef.current = false;
 
-    // Safety timeout — nunca fica em loading infinito
-    const safetyTimeout = setTimeout(() => {
+    const safetyTimer = setTimeout(() => {
       if (mountedRef.current) setLoading(false);
-    }, 8000);
+    }, 5000);
 
-    const initAuth = async () => {
+    const init = async () => {
       try {
-        const { data } = await supabase.auth.getSession();
-        const sess = data?.session ?? null;
+        const { data: { session } } = await supabase.auth.getSession();
         if (!mountedRef.current) return;
-        setSession(sess);
-        setUser(sess?.user ?? null);
-        if (sess?.user) await loadProfile(sess.user.id);
-      } catch (err) {
-        if (err?.name !== "AbortError") console.error("initAuth:", err);
+        if (session?.user) {
+          setUser(session.user);
+          const p = await loadProfile(session.user.id);
+          if (mountedRef.current) setProfile(p);
+        }
+      } catch (e) {
+        console.error("AuthContext init:", e?.message);
       } finally {
         if (mountedRef.current) {
+          clearTimeout(safetyTimer);
           setLoading(false);
-          clearTimeout(safetyTimeout);
+          initDoneRef.current = true;
         }
       }
     };
 
-    initAuth();
+    init();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, sess) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!initDoneRef.current) return;
         if (!mountedRef.current) return;
-        setSession(sess);
-        setUser(sess?.user ?? null);
-        if (sess?.user) {
-          await loadProfile(sess.user.id);
-        } else {
-          setProfile(null);
+
+        // Ignora SIGNED_IN disparado pelo signup de aluno pelo admin
+        if (event === "SIGNED_IN" && ignoreSIGNIN.current) {
+          ignoreSIGNIN.current = false;
+          return;
         }
-        if (mountedRef.current) setLoading(false);
+
+        if (event === "SIGNED_OUT" || !session) {
+          setUser(null);
+          setProfile(null);
+          return;
+        }
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          setUser(session.user);
+          const p = await loadProfile(session.user.id);
+          if (mountedRef.current) setProfile(p);
+        }
       }
     );
 
     return () => {
       mountedRef.current = false;
-      clearTimeout(safetyTimeout);
-      listener.subscription.unsubscribe();
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
     };
-  }, []);
+  }, []); // eslint-disable-line
 
   const login = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -98,20 +92,23 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
     setUser(null);
-    setSession(null);
+    setProfile(null);
+    await supabase.auth.signOut();
   };
 
-  const isAdmin         = profile?.role === "admin" || profile?.is_admin === true;
-  const isStudent       = profile?.role === "student";
-  const isAuthenticated = !!user;
+  // Expõe flag para CreateStudentPage bloquear o SIGNED_IN do signup
+  const setIgnoreNextSignIn = () => { ignoreSIGNIN.current = true; };
 
   return (
     <AuthContext.Provider value={{
-      session, user, profile, loading,
-      login, logout, isAdmin, isStudent, isAuthenticated,
+      user, profile, loading,
+      login, logout,
+      isAdmin:         profile?.role === "admin" || profile?.is_admin === true,
+      isStudent:       profile?.role === "student",
+      isAuthenticated: !!user,
+      reloadProfile:   () => user && loadProfile(user.id).then(p => { if (mountedRef.current) setProfile(p); }),
+      setIgnoreNextSignIn,
     }}>
       {children}
     </AuthContext.Provider>

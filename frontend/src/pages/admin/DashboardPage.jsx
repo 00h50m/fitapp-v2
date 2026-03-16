@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// ── Helpers ──────────────────────────────────────────────────────
 const fmtRelative = (dateStr) => {
   if (!dateStr) return "";
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -35,7 +34,6 @@ const AVATAR_COLORS = [
 const avatarColor = (name = "") => AVATAR_COLORS[(name.charCodeAt(0) || 0) % AVATAR_COLORS.length];
 const initials = (name = "") => name.split(" ").slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("");
 
-// ── StatCard ─────────────────────────────────────────────────────
 const StatCard = ({ title, value, icon: Icon, trend, trendLabel, loading }) => (
   <Card className="bg-card border-border">
     <CardContent className="p-5">
@@ -47,7 +45,8 @@ const StatCard = ({ title, value, icon: Icon, trend, trendLabel, loading }) => (
             : <p className="text-3xl font-bold text-foreground tabular-nums">{value ?? "—"}</p>
           }
           {trendLabel && !loading && (
-            <div className={cn("flex items-center gap-1 mt-1.5 text-xs font-medium", trend >= 0 ? "text-primary" : "text-destructive")}>
+            <div className={cn("flex items-center gap-1 mt-1.5 text-xs font-medium",
+              trend >= 0 ? "text-primary" : "text-destructive")}>
               {trend >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
               <span>{trendLabel}</span>
             </div>
@@ -61,7 +60,6 @@ const StatCard = ({ title, value, icon: Icon, trend, trendLabel, loading }) => (
   </Card>
 );
 
-// ── ActivityItem ──────────────────────────────────────────────────
 const ActivityItem = ({ name, action, time, icon: Icon, iconColor }) => (
   <div className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
     <div className={cn("h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border", avatarColor(name))}>
@@ -78,7 +76,6 @@ const ActivityItem = ({ name, action, time, icon: Icon, iconColor }) => (
   </div>
 );
 
-// ── DashboardPage ─────────────────────────────────────────────────
 const DashboardPage = () => {
   const navigate = useNavigate();
   const mountedRef = useRef(true);
@@ -92,20 +89,9 @@ const DashboardPage = () => {
   const [avgWorkouts, setAvgWorkouts] = useState(null);
   const [conclusionRate, setConclusionRate] = useState(null);
 
-  const safeQuery = async (queryFn) => {
-    try {
-      const result = await queryFn();
-      return result;
-    } catch (err) {
-      if (err?.name === "AbortError" || err?.message?.includes("abort")) return null;
-      throw err;
-    }
-  };
-
   const loadDashboard = useCallback(async () => {
     if (!mountedRef.current) return;
     setLoading(true);
-
     try {
       const now = new Date();
       const today = now.toISOString().split("T")[0];
@@ -114,41 +100,34 @@ const DashboardPage = () => {
       const in7Days = new Date(now.getTime() + 7 * 86400000).toISOString().split("T")[0];
       const week7ago = new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0];
 
-      // Queries em grupos menores para não sobrecarregar
-      const [r1, r2] = await Promise.all([
-        safeQuery(() => supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student")),
-        safeQuery(() => supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student").gte("access_end", today)),
+      // Stats básicos
+      const [r1, r2, r3, r4] = await Promise.all([
+        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student"),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student").gte("access_end", today),
+        supabase.from("exercises").select("*", { count: "exact", head: true }),
+        supabase.from("student_workouts").select("*", { count: "exact", head: true }).gte("created_at", monthStart),
       ]);
       if (!mountedRef.current) return;
 
-      const [r3, r4] = await Promise.all([
-        safeQuery(() => supabase.from("exercises").select("*", { count: "exact", head: true }).eq("is_active", true)),
-        safeQuery(() => supabase.from("student_workouts").select("*", { count: "exact", head: true }).gte("created_at", monthStart)),
+      // Trend e sessões
+      const [r5, r6, r7, r8, r9] = await Promise.all([
+        supabase.from("student_workouts").select("*", { count: "exact", head: true }).gte("created_at", prevMonthStart).lt("created_at", monthStart),
+        supabase.from("workout_sessions").select("*", { count: "exact", head: true }).gte("created_at", monthStart),
+        supabase.from("workout_sessions").select("*", { count: "exact", head: true }).gte("created_at", monthStart).eq("finished", true),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student").gte("access_end", today).lte("access_end", in7Days),
+        supabase.from("workout_sessions").select("student_id").gte("session_date", week7ago),
       ]);
       if (!mountedRef.current) return;
 
-      const [r5, r6, r7] = await Promise.all([
-        safeQuery(() => supabase.from("student_workouts").select("*", { count: "exact", head: true }).gte("created_at", prevMonthStart).lt("created_at", monthStart)),
-        safeQuery(() => supabase.from("workout_sessions").select("*", { count: "exact", head: true }).gte("created_at", monthStart)),
-        safeQuery(() => supabase.from("workout_sessions").select("*", { count: "exact", head: true }).gte("created_at", monthStart).eq("finished", true)),
-      ]);
-      if (!mountedRef.current) return;
-
-      const [r8, r9] = await Promise.all([
-        safeQuery(() => supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "student").gte("access_end", today).lte("access_end", in7Days)),
-        safeQuery(() => supabase.from("workout_sessions").select("student_id").gte("session_date", week7ago)),
-      ]);
-      if (!mountedRef.current) return;
-
-      const totalStudents = r1?.count ?? 0;
-      const activeStudents = r2?.count ?? 0;
-      const totalExercises = r3?.count ?? 0;
+      const totalStudents    = r1?.count ?? 0;
+      const activeStudents   = r2?.count ?? 0;
+      const totalExercises   = r3?.count ?? 0;
       const workoutsThisMonth = r4?.count ?? 0;
       const workoutsPrevMonth = r5?.count ?? 0;
-      const sessionsTotal = r6?.count ?? 0;
+      const sessionsTotal    = r6?.count ?? 0;
       const sessionsFinished = r7?.count ?? 0;
-      const renewalsPending = r8?.count ?? 0;
-      const sessionsWeek = r9?.data ?? [];
+      const renewalsPending  = r8?.count ?? 0;
+      const sessionsWeek     = r9?.data ?? [];
 
       const workoutTrend = workoutsPrevMonth > 0
         ? Math.round(((workoutsThisMonth - workoutsPrevMonth) / workoutsPrevMonth) * 100)
@@ -156,7 +135,7 @@ const DashboardPage = () => {
       const rate = sessionsTotal > 0 ? Math.round((sessionsFinished / sessionsTotal) * 100) : null;
       const avgW = activeStudents > 0 && sessionsWeek.length > 0
         ? (sessionsWeek.length / activeStudents).toFixed(1)
-        : "—";
+        : "0";
 
       if (mountedRef.current) {
         setStats({ totalStudents, activeStudents, totalExercises, workoutsThisMonth, workoutTrend });
@@ -165,29 +144,39 @@ const DashboardPage = () => {
         setAvgWorkouts(avgW);
       }
 
-      // Feed de atividade — queries separadas
+      // Feed de atividade — busca sessions e profiles separados (sem join para evitar erro)
       const [ra, rb] = await Promise.all([
-        safeQuery(() =>
-          supabase.from("workout_sessions")
-            .select("id, finished_at, started_at, profiles!student_id(name)")
-            .eq("finished", true)
-            .order("finished_at", { ascending: false })
-            .limit(5)
-        ),
-        safeQuery(() =>
-          supabase.from("profiles")
-            .select("id, name, created_at")
-            .eq("role", "student")
-            .order("created_at", { ascending: false })
-            .limit(3)
-        ),
+        supabase.from("workout_sessions")
+          .select("id, finished_at, started_at, student_id")
+          .eq("finished", true)
+          .order("finished_at", { ascending: false })
+          .limit(6),
+        supabase.from("profiles")
+          .select("id, user_id, name, created_at")
+          .eq("role", "student")
+          .order("created_at", { ascending: false })
+          .limit(3),
       ]);
       if (!mountedRef.current) return;
+
+      // Busca nomes dos alunos das sessions
+      const sessionStudentIds = [...new Set((ra?.data || []).map(s => s.student_id))];
+      let profileMap = {};
+      if (sessionStudentIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from("profiles")
+          .select("id, user_id, name")
+          .in("user_id", sessionStudentIds);
+        (profilesData || []).forEach(p => {
+          profileMap[p.user_id] = p.name || p.id;
+          profileMap[p.id] = p.name || p.id;
+        });
+      }
 
       const feed = [
         ...(ra?.data || []).map(s => ({
           id: `s-${s.id}`,
-          name: s.profiles?.name || "Aluno",
+          name: profileMap[s.student_id] || "Aluno",
           action: "Finalizou treino",
           date: s.finished_at || s.started_at,
           icon: CheckCircle2,
@@ -195,7 +184,7 @@ const DashboardPage = () => {
         })),
         ...(rb?.data || []).map(s => ({
           id: `u-${s.id}`,
-          name: s.name || "Novo Aluno",
+          name: s.name || s.id?.slice(0, 8) || "Novo Aluno",
           action: "Novo cadastro",
           date: s.created_at,
           icon: UserPlus,
@@ -206,9 +195,7 @@ const DashboardPage = () => {
       if (mountedRef.current) setActivity(feed);
 
     } catch (err) {
-      if (err?.name !== "AbortError" && !err?.message?.includes("abort")) {
-        console.error("Dashboard error:", err);
-      }
+      console.error("Dashboard error:", err?.message);
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -223,7 +210,6 @@ const DashboardPage = () => {
   return (
     <AdminLayout>
       <div className="space-y-6 animate-fade-in">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-display font-bold text-foreground">Dashboard</h1>
@@ -235,13 +221,11 @@ const DashboardPage = () => {
           </Button>
         </div>
 
-        {/* Stats */}
+        {/* Stats — 100% dados reais, sem trend mockado */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Total de Alunos" value={stats.totalStudents} icon={Users} loading={loading}
-            trend={12} trendLabel="+12% vs. mês anterior" />
-          <StatCard title="Alunos Ativos" value={stats.activeStudents} icon={Activity} loading={loading}
-            trend={8} trendLabel="+8% com acesso válido" />
-          <StatCard title="Exercícios" value={stats.totalExercises} icon={Dumbbell} loading={loading} />
+          <StatCard title="Total de Alunos"   value={stats.totalStudents}   icon={Users}     loading={loading} />
+          <StatCard title="Alunos Ativos"     value={stats.activeStudents}  icon={Activity}  loading={loading} />
+          <StatCard title="Exercícios"         value={stats.totalExercises}  icon={Dumbbell}  loading={loading} />
           <StatCard
             title="Treinos Este Mês"
             value={stats.workoutsThisMonth}
@@ -254,7 +238,6 @@ const DashboardPage = () => {
           />
         </div>
 
-        {/* Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Atividade Recente */}
           <Card className="bg-card border-border lg:col-span-2">
@@ -266,14 +249,14 @@ const DashboardPage = () => {
                 </CardTitle>
                 <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 px-2"
                   onClick={() => navigate("/admin/alunos")}>
-                  Ver todos <ArrowRight className="h-3 w-3 ml-1" />
+                  Ver alunos <ArrowRight className="h-3 w-3 ml-1" />
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="pt-0">
               {loading ? (
                 <div className="space-y-3">
-                  {[1, 2, 3, 4].map(i => (
+                  {[1,2,3,4].map(i => (
                     <div key={i} className="flex items-center gap-3 py-2">
                       <div className="h-9 w-9 rounded-full bg-muted/50 animate-pulse" />
                       <div className="flex-1 space-y-1.5">
@@ -299,15 +282,20 @@ const DashboardPage = () => {
             </CardContent>
           </Card>
 
-          {/* Resumo Rápido */}
+          {/* Resumo */}
           <div className="space-y-3">
             <Card className="bg-card border-border">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-medium text-muted-foreground">Taxa de Conclusão</p>
-                  <Badge className="text-[10px] px-1.5 py-0.5 bg-primary/15 text-primary border border-primary/30">
-                    {conclusionRate != null && conclusionRate >= 70 ? "Alta" : "Média"}
-                  </Badge>
+                  {conclusionRate != null && (
+                    <Badge className={cn("text-[10px] px-1.5 py-0.5 border",
+                      conclusionRate >= 70
+                        ? "bg-primary/15 text-primary border-primary/30"
+                        : "bg-orange-500/15 text-orange-400 border-orange-500/30")}>
+                      {conclusionRate >= 70 ? "Alta" : "Média"}
+                    </Badge>
+                  )}
                 </div>
                 {loading ? <div className="h-8 w-16 bg-muted/50 rounded animate-pulse mb-2" /> : (
                   <>
@@ -318,6 +306,7 @@ const DashboardPage = () => {
                       <div className="h-full rounded-full bg-primary transition-all duration-700"
                         style={{ width: `${conclusionRate ?? 0}%` }} />
                     </div>
+                    <p className="text-xs text-muted-foreground mt-1.5">sessões finalizadas este mês</p>
                   </>
                 )}
               </CardContent>
@@ -335,8 +324,8 @@ const DashboardPage = () => {
                 </div>
                 {loading ? <div className="h-8 w-10 bg-muted/50 rounded animate-pulse" /> : (
                   <>
-                    <p className="text-3xl font-bold text-foreground">{renewals ?? "—"}</p>
-                    <p className="text-xs text-muted-foreground mt-1">alunos com acesso expirando em 7 dias</p>
+                    <p className="text-3xl font-bold text-foreground">{renewals ?? "0"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">alunos expirando em 7 dias</p>
                   </>
                 )}
               </CardContent>
@@ -347,7 +336,7 @@ const DashboardPage = () => {
                 <p className="text-sm font-medium text-muted-foreground mb-2">Média Treinos/Semana</p>
                 {loading ? <div className="h-8 w-12 bg-muted/50 rounded animate-pulse" /> : (
                   <>
-                    <p className="text-3xl font-bold text-foreground">{avgWorkouts ?? "—"}</p>
+                    <p className="text-3xl font-bold text-foreground">{avgWorkouts ?? "0"}</p>
                     <p className="text-xs text-muted-foreground mt-1">por aluno ativo</p>
                   </>
                 )}
