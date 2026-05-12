@@ -1,1 +1,4 @@
-/* /index.html 200
+echo "/* /index.html 200" > frontend/public/_redirects
+git add .
+git commit -m "fix: redirects SPA"
+git push origin main
