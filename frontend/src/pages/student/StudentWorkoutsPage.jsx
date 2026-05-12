@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -7,18 +7,23 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   User, Dumbbell, LogOut, Loader2, RefreshCw,
-  ChevronRight, AlertCircle, Trophy, Calendar,
-  Play, CheckCircle2, Lock, FileText, ArrowRight,
-  Star, Clock, ChevronDown, ChevronUp, X,
+  AlertCircle, Lock, FileText, Play, CheckCircle2,
+  Clock, X, ChevronRight, Flame, Trophy, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
+// ─── helpers ──────────────────────────────────────────────────────────────
 const todayStr = () => new Date().toISOString().split("T")[0];
+
+function isExpiredWorkout(w) {
+  if (!w.end_date) return false;
+  return new Date(w.end_date + "T23:59:59") < new Date();
+}
 
 function getNextWorkoutIndex(workouts, sessions) {
   if (!workouts.length) return 0;
-  const finished = sessions.filter(s => s.finished)
+  const finished = sessions
+    .filter(s => s.finished)
     .sort((a, b) => new Date(b.session_date) - new Date(a.session_date));
   if (!finished.length) return 0;
   const lastIdx = workouts.findIndex(w => w.id === finished[0].workout_id);
@@ -33,11 +38,6 @@ function activeSessionToday(sessions) {
   return sessions.find(s => s.session_date === todayStr() && !s.finished) || null;
 }
 
-function isExpiredWorkout(w) {
-  if (!w.end_date) return false;
-  return new Date(w.end_date + "T23:59:59") < new Date();
-}
-
 const WA_NUMBER = "5511949997913";
 const waLink = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
 
@@ -47,8 +47,7 @@ const WhatsAppIcon = () => (
   </svg>
 );
 
-
-// ─── PDF.js modal (mesma lógica da tela do treino) ────────────────────────
+// ─── PDF Modal ─────────────────────────────────────────────────────────────
 const PDFJS_CDN    = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 function loadPdfJs() {
@@ -87,10 +86,8 @@ const PdfModal = ({ url, onClose }) => {
     });
   }, [pdfDoc, page]);
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/90 backdrop-blur-sm p-0 sm:p-4"
-      onClick={onClose}>
-      <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl flex flex-col overflow-hidden"
-        style={{ height: "92dvh" }} onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/90 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl flex flex-col overflow-hidden" style={{ height: "92dvh" }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" />
@@ -105,23 +102,194 @@ const PdfModal = ({ url, onClose }) => {
               </div>
             )}
             <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Abrir</a>
-            <button className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </button>
+            <button className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center" onClick={onClose}><X className="h-4 w-4" /></button>
           </div>
         </div>
         <div className="flex-1 overflow-auto flex items-start justify-center p-3 bg-muted/20">
           {pdfLoading && <div className="flex items-center justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-          {pdfError && (
-            <div className="flex flex-col items-center py-16 gap-3">
-              <p className="text-sm text-muted-foreground">Não foi possível carregar o PDF inline.</p>
-              <a href={url} target="_blank" rel="noopener noreferrer">
-                <button className="px-4 py-2 rounded-xl border border-border text-sm text-foreground hover:bg-muted transition-colors">Abrir em nova aba</button>
-              </a>
-            </div>
-          )}
+          {pdfError && <div className="flex flex-col items-center py-16 gap-3"><p className="text-sm text-muted-foreground">Não foi possível carregar o PDF.</p><a href={url} target="_blank" rel="noopener noreferrer"><button className="px-4 py-2 rounded-xl border border-border text-sm">Abrir em nova aba</button></a></div>}
           {!pdfLoading && !pdfError && <canvas ref={canvasRef} className="shadow-lg max-w-full rounded" />}
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Paleta de cores por seção ────────────────────────────────────────────
+const SECTION_PALETTES = [
+  { bg: "from-primary/20 to-primary/5",   accent: "bg-primary/20 text-primary border-primary/30",     dot: "bg-primary" },
+  { bg: "from-blue-500/20 to-blue-500/5", accent: "bg-blue-500/20 text-blue-400 border-blue-500/30",  dot: "bg-blue-400" },
+  { bg: "from-purple-500/20 to-purple-500/5", accent: "bg-purple-500/20 text-purple-400 border-purple-500/30", dot: "bg-purple-400" },
+  { bg: "from-emerald-500/20 to-emerald-500/5", accent: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30", dot: "bg-emerald-400" },
+  { bg: "from-rose-500/20 to-rose-500/5", accent: "bg-rose-500/20 text-rose-400 border-rose-500/30",  dot: "bg-rose-400" },
+  { bg: "from-orange-500/20 to-orange-500/5", accent: "bg-orange-500/20 text-orange-400 border-orange-500/30", dot: "bg-orange-400" },
+];
+
+// ─── Workout Card (estilo capa, formato retrato) ───────────────────────────
+const WorkoutCard = ({ workout, isNext, isOngoing, alreadyToday, sessions, onPdf, palette }) => {
+  const navigate = useNavigate();
+  const expired   = isExpiredWorkout(workout);
+  const doneCount = sessions.filter(s => s.workout_id === workout.id && s.finished).length;
+  const locked    = expired;
+
+  const handleClick = () => {
+    if (locked) return;
+    navigate(`/student/workout/${workout.id}`);
+  };
+
+  return (
+    <div
+      className={cn(
+        "relative flex-shrink-0 rounded-2xl overflow-hidden cursor-pointer",
+        "transition-all duration-200 active:scale-[0.96]",
+        "w-[152px]",
+        locked ? "opacity-55 cursor-default" : "hover:scale-[1.02]"
+      )}
+      style={{ aspectRatio: "2/3" }}
+      onClick={handleClick}
+    >
+      {/* Capa / fundo */}
+      <div className={cn(
+        "absolute inset-0 bg-gradient-to-b",
+        locked
+          ? "from-muted/60 to-muted/90"
+          : isOngoing
+          ? "from-blue-500/30 to-blue-900/70"
+          : isNext && !alreadyToday
+          ? `${palette.bg} to-[hsl(var(--card))]`
+          : "from-card/80 to-card"
+      )} />
+
+      {/* Padrão decorativo sutil no fundo */}
+      <div className="absolute inset-0 opacity-[0.04]"
+        style={{ backgroundImage: "repeating-linear-gradient(45deg, currentColor 0, currentColor 1px, transparent 0, transparent 50%)", backgroundSize: "12px 12px" }} />
+
+      {/* Conteúdo */}
+      <div className="relative h-full flex flex-col justify-between p-3">
+        {/* Topo — badges */}
+        <div className="flex items-start justify-between gap-1">
+          {/* Badge de estado */}
+          {locked ? (
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground bg-muted/80 border border-border/50 px-1.5 py-0.5 rounded-full">
+              Expirado
+            </span>
+          ) : isOngoing ? (
+            <span className="text-[9px] font-bold uppercase tracking-widest text-blue-400 bg-blue-500/15 border border-blue-500/25 px-1.5 py-0.5 rounded-full">
+              Em andamento
+            </span>
+          ) : isNext && !alreadyToday ? (
+            <span className="text-[9px] font-bold uppercase tracking-widest text-primary bg-primary/15 border border-primary/25 px-1.5 py-0.5 rounded-full">
+              ⚡ Hoje
+            </span>
+          ) : doneCount > 0 ? (
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground bg-muted/60 border border-border/40 px-1.5 py-0.5 rounded-full">
+              {doneCount}× feito
+            </span>
+          ) : (
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 bg-transparent px-1.5 py-0.5 rounded-full">
+              Disponível
+            </span>
+          )}
+
+          {/* Ícone de cadeado */}
+          {locked && (
+            <div className="h-6 w-6 rounded-full bg-muted/80 border border-border/50 flex items-center justify-center">
+              <Lock className="h-3 w-3 text-muted-foreground/60" />
+            </div>
+          )}
+        </div>
+
+        {/* Ícone central */}
+        <div className="flex items-center justify-center flex-1">
+          <div className={cn(
+            "h-14 w-14 rounded-2xl flex items-center justify-center border",
+            locked
+              ? "bg-muted/40 border-border/30"
+              : isOngoing
+              ? "bg-blue-500/20 border-blue-500/30"
+              : isNext && !alreadyToday
+              ? "bg-primary/15 border-primary/25"
+              : "bg-muted/50 border-border/50"
+          )}>
+            {locked ? (
+              <Lock className="h-6 w-6 text-muted-foreground/40" />
+            ) : isOngoing ? (
+              <Play className="h-6 w-6 text-blue-400" />
+            ) : isNext && !alreadyToday ? (
+              <Flame className="h-6 w-6 text-primary" />
+            ) : doneCount > 0 ? (
+              <CheckCircle2 className="h-6 w-6 text-muted-foreground/60" />
+            ) : (
+              <Dumbbell className="h-6 w-6 text-muted-foreground/50" />
+            )}
+          </div>
+        </div>
+
+        {/* Base — título + PDF */}
+        <div className="space-y-2">
+          <div>
+            <p className={cn(
+              "font-bold text-sm leading-tight line-clamp-2",
+              locked ? "text-muted-foreground/60" : "text-foreground"
+            )}>
+              {workout.title}
+            </p>
+          </div>
+
+          {/* Botão PDF — só se tiver e não expirado */}
+          {workout.pdf_url && !locked && (
+            <button
+              className="flex items-center gap-1.5 w-full py-1.5 px-2 rounded-lg bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors"
+              onClick={e => { e.stopPropagation(); onPdf(workout.pdf_url); }}
+            >
+              <FileText className="h-3 w-3 text-primary flex-shrink-0" />
+              <span className="text-[10px] text-primary font-semibold truncate">Ver PDF</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Row de seção (scroll horizontal) ─────────────────────────────────────
+const CatalogRow = ({ title, workouts, sessions, nextIdx, alreadyToday, ongoingId, onPdf, paletteIndex }) => {
+  const palette = SECTION_PALETTES[paletteIndex % SECTION_PALETTES.length];
+  const scrollRef = useRef(null);
+
+  if (!workouts.length) return null;
+
+  return (
+    <div className="space-y-3">
+      {/* Header da seção */}
+      <div className="flex items-center justify-between px-4">
+        <div className="flex items-center gap-2">
+          <div className={cn("h-2 w-2 rounded-full", palette.dot)} />
+          <h2 className="font-bold text-sm text-foreground tracking-tight">{title}</h2>
+          <span className="text-xs text-muted-foreground">({workouts.length})</span>
+        </div>
+      </div>
+
+      {/* Scroll horizontal */}
+      <div
+        ref={scrollRef}
+        className="flex gap-3 overflow-x-auto px-4 pb-1 scroll-smooth"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        {workouts.map((workout, idx) => (
+          <WorkoutCard
+            key={workout.id}
+            workout={workout}
+            isNext={workout.id === workouts[nextIdx]?.id}
+            isOngoing={workout.id === ongoingId}
+            alreadyToday={alreadyToday}
+            sessions={sessions}
+            onPdf={onPdf}
+            palette={palette}
+          />
+        ))}
+        {/* Spacer final */}
+        <div className="flex-shrink-0 w-1" />
       </div>
     </div>
   );
@@ -132,12 +300,11 @@ const StudentWorkoutsPage = () => {
   const navigate = useNavigate();
   const { user, profile, logout, loading: authLoading } = useAuth();
 
-  const [workouts,    setWorkouts]    = useState([]);
-  const [sessions,    setSessions]    = useState([]);
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState(null);
-  const [showExpired, setShowExpired] = useState(false);
-  const [pdfUrl, setPdfUrl]           = useState(null);
+  const [workouts,  setWorkouts]  = useState([]);
+  const [sessions,  setSessions]  = useState([]);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState(null);
+  const [pdfUrl,    setPdfUrl]    = useState(null);
 
   const isExpired = profile?.access_end
     ? new Date(profile.access_end + "T23:59") < new Date()
@@ -149,9 +316,10 @@ const StudentWorkoutsPage = () => {
     try {
       const [wRes, sRes] = await Promise.all([
         supabase.from("student_workouts")
-          .select("id, title, status, end_date, pdf_url, created_at, template_id")
+          .select("id, title, status, end_date, pdf_url, created_at, template_id, catalog_section, catalog_order")
           .eq("student_id", user.id)
           .eq("status", "active")
+          .order("catalog_order", { ascending: true })
           .order("created_at", { ascending: true }),
         supabase.from("workout_sessions")
           .select("id, workout_id, session_date, finished, status")
@@ -161,24 +329,20 @@ const StudentWorkoutsPage = () => {
       ]);
       if (wRes.error) throw wRes.error;
       if (sRes.error) throw sRes.error;
+
       const rawWorkouts = wRes.data || [];
-      
-      // Busca pdf_url dos templates em query separada (sem join que causa body stream)
       const templateIds = [...new Set(rawWorkouts.map(w => w.template_id).filter(Boolean))];
       let pdfMap = {};
       if (templateIds.length) {
         const { data: tmplData } = await supabase
-          .from("workout_templates")
-          .select("id, pdf_url")
-          .in("id", templateIds);
+          .from("workout_templates").select("id, pdf_url").in("id", templateIds);
         (tmplData || []).forEach(t => { if (t.pdf_url) pdfMap[t.id] = t.pdf_url; });
       }
 
-      const normalized = rawWorkouts.map(w => ({
+      setWorkouts(rawWorkouts.map(w => ({
         ...w,
         pdf_url: w.pdf_url || pdfMap[w.template_id] || null,
-      }));
-      setWorkouts(normalized);
+      })));
       setSessions(sRes.data || []);
     } catch (err) {
       setError(err.message);
@@ -197,18 +361,12 @@ const StudentWorkoutsPage = () => {
   const activeWorkouts  = workouts.filter(w => !isExpiredWorkout(w));
   const expiredWorkouts = workouts.filter(w =>  isExpiredWorkout(w));
   const allExpired      = workouts.length > 0 && activeWorkouts.length === 0;
+  const alreadyToday    = trainedToday(sessions);
+  const ongoing         = activeSessionToday(sessions);
+  const nextIdx         = getNextWorkoutIndex(activeWorkouts, sessions);
+  const todayWorkout    = activeWorkouts[nextIdx] || null;
 
-  const nextIdx      = getNextWorkoutIndex(activeWorkouts, sessions);
-  const alreadyToday = trainedToday(sessions);
-  const ongoing      = activeSessionToday(sessions);
-  const todayWorkout = activeWorkouts[nextIdx] || null;
-
-  const weekCount = sessions.filter(s => {
-    if (!s.finished) return false;
-    const d = new Date(); d.setDate(d.getDate() - d.getDay());
-    return new Date(s.session_date + "T12:00") >= d;
-  }).length;
-
+  // Streak
   const streak = (() => {
     let count = alreadyToday ? 1 : 0;
     const done = new Set(sessions.filter(s => s.finished).map(s => s.session_date));
@@ -217,136 +375,59 @@ const StudentWorkoutsPage = () => {
     return count;
   })();
 
-  // ── WorkoutCard ────────────────────────────────────────────────────────
-  const WorkoutCard = ({ workout, isNext, isOngoing }) => {
-    const doneCount = sessions.filter(s => s.workout_id === workout.id && s.finished).length;
-    const last      = sessions.find(s => s.workout_id === workout.id && s.finished);
-    const expired   = isExpiredWorkout(workout);
+  const weekCount = sessions.filter(s => {
+    if (!s.finished) return false;
+    const d = new Date(); d.setDate(d.getDate() - d.getDay());
+    return new Date(s.session_date + "T12:00") >= d;
+  }).length;
 
-    return (
-      <div className={cn(
-        "rounded-2xl border transition-all overflow-hidden",
-        expired
-          ? "bg-muted/10 border-border/40 opacity-60"
-          : isOngoing
-          ? "bg-blue-500/5 border-blue-500/25"
-          : isNext && !alreadyToday
-          ? "bg-primary/5 border-primary/30 shadow-[0_0_24px_-6px_hsl(var(--primary)/0.3)]"
-          : "bg-card border-border"
-      )}>
-        {/* Linha principal */}
-        <div
-          className="flex items-center gap-4 p-4 cursor-pointer active:scale-[0.98] transition-transform"
-          onClick={() => !expired && navigate(`/student/workout/${workout.id}`)}
-        >
-          {/* Ícone */}
-          <div className={cn(
-            "h-12 w-12 rounded-xl flex items-center justify-center border flex-shrink-0",
-            expired   ? "bg-muted/40 border-border/40"
-            : isOngoing ? "bg-blue-500/15 border-blue-500/30"
-            : isNext && !alreadyToday ? "bg-primary/15 border-primary/25"
-            : "bg-muted border-border"
-          )}>
-            {expired          ? <Lock     className="h-5 w-5 text-muted-foreground/40" />
-             : isOngoing      ? <Play     className="h-5 w-5 text-blue-400" />
-             : isNext && !alreadyToday ? <Star className="h-5 w-5 text-primary" />
-             :                  <Dumbbell className="h-5 w-5 text-muted-foreground" />}
-          </div>
+  // Agrupar por catalog_section
+  const sectionMap = {};
+  activeWorkouts.forEach(w => {
+    const sec = w.catalog_section?.trim() || "Meus Treinos";
+    if (!sectionMap[sec]) sectionMap[sec] = [];
+    sectionMap[sec].push(w);
+  });
+  const sections = Object.entries(sectionMap);
 
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1.5">
-              <p className={cn("font-bold text-sm truncate", expired ? "text-muted-foreground" : "text-foreground")}>
-                {workout.title}
-              </p>
-              {expired && <Badge variant="destructive" className="text-[10px] px-1.5">Expirado</Badge>}
-              {!expired && isOngoing && (
-                <Badge className="text-[10px] px-1.5 bg-blue-500/20 text-blue-400 border-blue-500/30 border">
-                  Em andamento
-                </Badge>
-              )}
-              {!expired && isNext && !alreadyToday && !isOngoing && (
-                <Badge variant="premium" className="text-[10px] px-1.5">Hoje ⚡</Badge>
-              )}
-              {!expired && alreadyToday && isNext && (
-                <Badge className="text-[10px] px-1.5 bg-green-500/20 text-green-400 border-green-500/30 border">
-                  ✓ Feito
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <Trophy className="h-3 w-3" />
-                {doneCount} {doneCount === 1 ? "sessão" : "sessões"}
-              </span>
-              {last && (
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="h-3 w-3" />
-                  {new Date(last.session_date + "T12:00").toLocaleDateString("pt-BR", {
-                    day: "2-digit", month: "short",
-                  })}
-                </span>
-              )}
-            </div>
-          </div>
+  // ── Estados de tela ────────────────────────────────────────────────────
+  const showEmpty    = !loading && !error && workouts.length === 0;
+  const showExpired  = !loading && !error && (isExpired || allExpired);
+  const showCatalog  = !loading && !error && !isExpired && !allExpired && workouts.length > 0;
 
-          <ChevronRight className="h-4 w-4 text-muted-foreground/40 flex-shrink-0" />
-        </div>
-
-        {/* Faixa PDF — só aparece se tiver PDF e não expirado */}
-        {workout.pdf_url && !expired && (
-          <button
-            className="w-full flex items-center gap-2 px-4 py-3 border-t border-border/50 bg-primary/5 hover:bg-primary/10 transition-colors"
-            onClick={e => { e.stopPropagation(); setPdfUrl(workout.pdf_url); }}
-          >
-            <FileText className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-            <span className="text-xs text-primary font-semibold flex-1 text-left">Ver PDF do Treino</span>
-            <ArrowRight className="h-3 w-3 text-primary" />
-          </button>
-        )}
-      </div>
-    );
-  };
-
-  // ── Label de seção com linha ───────────────────────────────────────────
-  const SectionLabel = ({ children }) => (
-    <div className="flex items-center gap-2">
-      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">
-        {children}
-      </p>
-      <div className="flex-1 h-px bg-border/50" />
-    </div>
-  );
-
-  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <MobileContainer>
-
-      {/* Header */}
+      {/* ── Header ── */}
       <MobileHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="h-9 w-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-              <User className="h-4 w-4 text-primary" />
+            {/* Avatar */}
+            <div className="relative flex-shrink-0">
+              <div className="h-9 w-9 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center">
+                <User className="h-4 w-4 text-primary" />
+              </div>
+              {streak >= 3 && (
+                <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-background flex items-center justify-center">
+                  <Flame className="h-2.5 w-2.5 text-orange-400" />
+                </div>
+              )}
             </div>
             <div className="min-w-0">
-              <p className="font-semibold text-sm text-foreground leading-tight truncate">
-                {profile?.name || "Aluno"}
+              <p className="font-bold text-sm text-foreground leading-tight truncate">
+                {profile?.name?.split(" ")[0] || "Aluno"}
               </p>
-              <p className="text-[11px] leading-tight truncate">
+              <p className="text-[11px] leading-tight">
                 {isExpired
                   ? <span className="text-destructive font-medium">Acesso expirado</span>
-                  : profile?.access_end
-                  ? <span className="text-muted-foreground">
-                      Ativo até {new Date(profile.access_end + "T12:00").toLocaleDateString("pt-BR")}
-                    </span>
-                  : <span className="text-muted-foreground">Aluno ativo</span>}
+                  : streak >= 2
+                  ? <span className="text-orange-400 font-medium">{streak} dias seguidos 🔥</span>
+                  : <span className="text-muted-foreground">Bora treinar 💪</span>}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={load}>
-              <RefreshCw className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-0.5">
+            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={load} disabled={loading}>
+              <RefreshCw className={cn("h-4 w-4 text-muted-foreground", loading && "animate-spin")} />
             </Button>
             <Button variant="ghost" size="icon" className="h-9 w-9"
               onClick={async () => { try { await logout(); } catch {} }}>
@@ -356,74 +437,53 @@ const StudentWorkoutsPage = () => {
         </div>
       </MobileHeader>
 
-      <MobileContent className="pb-32 px-4">
+      <MobileContent className="pb-32 px-0">
 
-        {/* Loading */}
-        {loading ? (
-          <div className="flex items-center justify-center py-24">
+        {/* ── Loading ── */}
+        {loading && (
+          <div className="flex items-center justify-center py-32">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
+        )}
 
-        /* Error */
-        ) : error ? (
-          <div className="flex flex-col items-center py-16 gap-4 text-center">
+        {/* ── Error ── */}
+        {error && (
+          <div className="flex flex-col items-center py-16 gap-4 text-center px-6">
             <AlertCircle className="h-10 w-10 text-destructive" />
             <p className="text-sm text-destructive">{error}</p>
             <Button variant="outline" size="sm" onClick={load}>
               <RefreshCw className="h-4 w-4 mr-2" />Tentar novamente
             </Button>
           </div>
+        )}
 
-        /* Acesso expirado */
-        ) : isExpired ? (
-          <div className="flex flex-col items-center justify-center min-h-[75vh] px-4 text-center gap-6 animate-fade-in">
+        {/* ── Acesso ou treinos expirados ── */}
+        {!loading && !error && (isExpired || allExpired) && (
+          <div className="flex flex-col items-center justify-center min-h-[75vh] px-6 text-center gap-6 animate-fade-in">
             <div className="h-24 w-24 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center">
               <Lock className="h-11 w-11 text-destructive/60" />
             </div>
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-foreground">Acesso Expirado</h2>
+              <h2 className="text-2xl font-bold text-foreground">
+                {isExpired ? "Acesso Expirado" : "Treinos Expirados"}
+              </h2>
               <p className="text-sm text-muted-foreground max-w-[260px] leading-relaxed">
-                Seu plano expirou em{" "}
-                <span className="text-foreground font-semibold">
-                  {profile?.access_end
-                    ? new Date(profile.access_end + "T12:00").toLocaleDateString("pt-BR")
-                    : "—"}
-                </span>. Fale com seu personal para renovar!
+                {isExpired && profile?.access_end
+                  ? `Seu plano expirou em ${new Date(profile.access_end + "T12:00").toLocaleDateString("pt-BR")}.`
+                  : "Seus treinos expiraram."}{" "}
+                Fale com seu personal para renovar!
               </p>
             </div>
-            <div className="flex flex-col gap-3 w-full max-w-[260px]">
-              <Button variant="premium" className="w-full gap-2 py-6 text-base"
-                onClick={() => window.open(waLink("Olá! Gostaria de renovar meu plano no Santana Method. 🏋️"), "_blank")}>
-                <WhatsAppIcon />Falar com o Personal
-              </Button>
-              <Button variant="outline" className="w-full"
-                onClick={async () => { await logout(); }}>
-                Sair da conta
-              </Button>
-            </div>
-          </div>
-
-        /* Só treinos expirados */
-        ) : allExpired ? (
-          <div className="flex flex-col items-center justify-center min-h-[65vh] px-4 text-center gap-6 animate-fade-in">
-            <div className="h-20 w-20 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-              <Clock className="h-9 w-9 text-orange-400" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold text-foreground">Treinos Expirados</h2>
-              <p className="text-sm text-muted-foreground max-w-[260px] leading-relaxed">
-                Seus treinos expiraram. Fale com seu personal para renovar!
-              </p>
-            </div>
-            <Button variant="premium" className="gap-2 py-5 px-6"
-              onClick={() => window.open(waLink("Olá! Meus treinos expiraram e gostaria de renovar. 🏋️"), "_blank")}>
+            <Button variant="premium" className="gap-2 py-6 px-6 text-base"
+              onClick={() => window.open(waLink("Olá! Gostaria de renovar meu acesso. 🏋️"), "_blank")}>
               <WhatsAppIcon />Falar com o Personal
             </Button>
           </div>
+        )}
 
-        /* Sem treinos */
-        ) : workouts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center min-h-[65vh] px-4 text-center gap-5 animate-fade-in">
+        {/* ── Sem treinos ── */}
+        {showEmpty && (
+          <div className="flex flex-col items-center justify-center min-h-[65vh] px-6 text-center gap-5 animate-fade-in">
             <div className="h-20 w-20 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
               <Dumbbell className="h-9 w-9 text-primary" />
             </div>
@@ -434,105 +494,97 @@ const StudentWorkoutsPage = () => {
               </p>
             </div>
             <Button variant="outline" className="gap-2"
-              onClick={() => window.open(waLink("Olá! Estou aguardando meu treino no Santana Method. 💪"), "_blank")}>
+              onClick={() => window.open(waLink("Olá! Estou aguardando meu treino. 💪"), "_blank")}>
               <WhatsAppIcon />Avisar o Personal
             </Button>
           </div>
+        )}
 
-        /* Conteúdo principal */
-        ) : (
-          <div className="flex flex-col gap-5 animate-fade-in pt-3">
+        {/* ── Catálogo principal ── */}
+        {showCatalog && (
+          <div className="flex flex-col gap-0 animate-fade-in">
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-2.5">
-              {[
-                { label: "Treinos",     value: activeWorkouts.length, color: "text-primary" },
-                { label: "Essa semana", value: weekCount,             color: "text-foreground" },
-                { label: streak >= 2 ? "🔥 Streak" : "Sequência", value: streak, color: "text-foreground" },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="bg-card border border-border rounded-2xl p-4 text-center">
-                  <p className={cn("text-2xl font-black leading-none mb-1.5", color)}>{value}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide leading-tight">{label}</p>
+            {/* ── Hero: stats + treino de hoje ── */}
+            <div className="px-4 pt-3 pb-5 space-y-4">
+              {/* Stats mini */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { icon: Dumbbell, label: "Treinos",      value: activeWorkouts.length, color: "text-primary" },
+                  { icon: Trophy,   label: "Essa semana",  value: weekCount,             color: "text-foreground" },
+                  { icon: Flame,    label: streak >= 2 ? "🔥 Streak" : "Sequência",
+                                    value: streak,                                        color: streak >= 3 ? "text-orange-400" : "text-foreground" },
+                ].map(({ icon: Icon, label, value, color }) => (
+                  <div key={label} className="bg-card border border-border rounded-xl p-3 text-center">
+                    <p className={cn("text-xl font-black leading-none mb-1", color)}>{value}</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide leading-tight">{label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Destaque treino de hoje */}
+              {todayWorkout && !alreadyToday && (
+                <button
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl bg-primary/8 border border-primary/25 hover:bg-primary/12 transition-colors active:scale-[0.98]"
+                  onClick={() => navigate(`/student/workout/${todayWorkout.id}`)}
+                >
+                  <div className="h-12 w-12 rounded-xl bg-primary/15 border border-primary/25 flex items-center justify-center flex-shrink-0">
+                    <Zap className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-[10px] font-bold text-primary uppercase tracking-widest mb-0.5">Treino de hoje</p>
+                    <p className="font-bold text-foreground text-sm truncate">{todayWorkout.title}</p>
+                  </div>
+                  <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                    <Play className="h-4 w-4 text-primary-foreground ml-0.5" />
+                  </div>
+                </button>
+              )}
+
+              {/* Concluído hoje */}
+              {alreadyToday && (
+                <div className="flex items-center gap-3.5 bg-green-500/8 border border-green-500/20 rounded-2xl px-4 py-3">
+                  <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-green-400">Treino concluído hoje! 🏆</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {activeWorkouts.length > 1 ? "Amanhã começa o próximo." : "Repita quando quiser!"}
+                    </p>
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
 
-            {/* Treino de hoje */}
-            {todayWorkout && (
-              <div className="flex flex-col gap-3">
-                <SectionLabel>
-                  {alreadyToday ? "✓ Treino de hoje" : "Treino de hoje"}
-                </SectionLabel>
-                <WorkoutCard
-                  workout={todayWorkout}
-                  isNext={true}
-                  isOngoing={ongoing?.workout_id === todayWorkout.id}
+            {/* ── Divisor ── */}
+            <div className="h-px bg-border/30 mx-4 mb-5" />
+
+            {/* ── Rows do catálogo por seção ── */}
+            <div className="flex flex-col gap-7">
+              {sections.map(([sectionTitle, sectionWorkouts], i) => (
+                <CatalogRow
+                  key={sectionTitle}
+                  title={sectionTitle}
+                  workouts={sectionWorkouts}
+                  sessions={sessions}
+                  nextIdx={nextIdx}
+                  alreadyToday={alreadyToday}
+                  ongoingId={ongoing?.workout_id}
+                  onPdf={setPdfUrl}
+                  paletteIndex={i}
                 />
-              </div>
-            )}
+              ))}
 
-            {/* Concluído hoje */}
-            {alreadyToday && (
-              <div className="flex items-center gap-3.5 bg-green-500/8 border border-green-500/20 rounded-2xl px-4 py-4">
-                <div className="h-10 w-10 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                  <CheckCircle2 className="h-5 w-5 text-green-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-green-400">Treino concluído hoje! 🏆</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {activeWorkouts.length > 1 ? "Amanhã começa o próximo." : "Repita quando quiser!"}
-                  </p>
-                </div>
-              </div>
-            )}
+              {/* ── Seção de expirados (colapsada) ── */}
+              {expiredWorkouts.length > 0 && (
+                <ExpiredSection workouts={expiredWorkouts} sessions={sessions} onPdf={setPdfUrl} />
+              )}
+            </div>
 
-            {/* Todos os treinos — só quando tem mais de 1 */}
-            {activeWorkouts.length > 1 && (
-              <div className="flex flex-col gap-3">
-                <SectionLabel>Todos os treinos</SectionLabel>
-                <div className="flex flex-col gap-2.5">
-                  {activeWorkouts.map((w, idx) => (
-                    <WorkoutCard
-                      key={w.id}
-                      workout={w}
-                      isNext={idx === nextIdx}
-                      isOngoing={ongoing?.workout_id === w.id}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Treinos expirados — colapsável */}
-            {expiredWorkouts.length > 0 && (
-              <div className="flex flex-col gap-2.5">
-                <button
-                  className="flex items-center gap-2 w-full"
-                  onClick={() => setShowExpired(p => !p)}
-                >
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">
-                    Treinos expirados ({expiredWorkouts.length})
-                  </p>
-                  <div className="flex-1 h-px bg-border/40" />
-                  {showExpired
-                    ? <ChevronUp   className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                    : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
-                </button>
-                {showExpired && (
-                  <div className="flex flex-col gap-2.5">
-                    {expiredWorkouts.map(w => (
-                      <WorkoutCard key={w.id} workout={w} isNext={false} isOngoing={false} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
+            <div className="h-6" />
           </div>
         )}
       </MobileContent>
 
-      {/* Footer CTA */}
+      {/* ── Footer CTA ── */}
       {!loading && !error && !isExpired && !allExpired && todayWorkout && (
         <MobileFooter>
           <Button
@@ -549,17 +601,56 @@ const StudentWorkoutsPage = () => {
             {ongoing
               ? <><Play className="h-5 w-5" />Continuar Treino</>
               : alreadyToday
-              ? <><RefreshCw className="h-5 w-5" />Novo Ciclo — Repetir Treino</>
-              : <><Dumbbell className="h-5 w-5" />Iniciar Treino de Hoje</>
-            }
+              ? <><RefreshCw className="h-5 w-5" />Repetir Treino</>
+              : <><Zap className="h-5 w-5" />Iniciar Treino de Hoje</>}
           </Button>
         </MobileFooter>
       )}
 
       {/* Modal PDF */}
       {pdfUrl && <PdfModal url={pdfUrl} onClose={() => setPdfUrl(null)} />}
-
     </MobileContainer>
+  );
+};
+
+// ─── Seção de expirados colapsável ─────────────────────────────────────────
+const ExpiredSection = ({ workouts, sessions, onPdf }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="px-4 space-y-3">
+      <button
+        className="flex items-center gap-2 w-full"
+        onClick={() => setOpen(p => !p)}
+      >
+        <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+        <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">
+          Expirados ({workouts.length})
+        </p>
+        <div className="flex-1 h-px bg-border/30" />
+        <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground/40 transition-transform", open && "rotate-90")} />
+      </button>
+
+      {open && (
+        <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+          {workouts.map(w => (
+            <div
+              key={w.id}
+              className="flex-shrink-0 rounded-2xl overflow-hidden opacity-40"
+              style={{ width: 152, aspectRatio: "2/3" }}
+            >
+              <div className="h-full bg-muted/40 border border-border/30 rounded-2xl flex flex-col items-center justify-center gap-2 p-3">
+                <Lock className="h-6 w-6 text-muted-foreground/40" />
+                <p className="text-[11px] font-semibold text-muted-foreground/60 text-center line-clamp-2">{w.title}</p>
+                <span className="text-[9px] font-bold text-destructive/60 bg-destructive/10 border border-destructive/20 px-2 py-0.5 rounded-full">
+                  Expirado
+                </span>
+              </div>
+            </div>
+          ))}
+          <div className="flex-shrink-0 w-1" />
+        </div>
+      )}
+    </div>
   );
 };
 
