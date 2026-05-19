@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute, AdminRoute, PublicRoute } from "@/components/auth/ProtectedRoutes";
@@ -10,14 +10,14 @@ import LoginPage from "@/pages/LoginPage";
 
 // Student Pages
 import StudentWorkoutsPage from "@/pages/student/StudentWorkoutsPage";
-import StudentWorkoutPage from "@/pages/student/StudentWorkoutPage";
+import StudentWorkoutPage  from "@/pages/student/StudentWorkoutPage";
 
 // Admin Pages
-import DashboardPage       from "@/pages/admin/DashboardPage";
-import AdminAlunosPage     from "@/pages/admin/AdminAlunosPage";
-import AdminAlunoDetailPage from "@/pages/admin/AdminAlunoDetailPage.jsx";
-import CreateStudentPage   from "@/pages/admin/CreateStudentPage";
-import ExerciciosPage      from "@/pages/admin/ExerciciosPage";
+import DashboardPage        from "@/pages/admin/DashboardPage";
+import AdminAlunosPage      from "@/pages/admin/AdminAlunosPage";
+import AdminAlunoDetailPage from "@/pages/admin/AdminAlunoDetailPage";
+import CreateStudentPage    from "@/pages/admin/CreateStudentPage";
+import ExerciciosPage       from "@/pages/admin/ExerciciosPage";
 
 // Treinos Pages
 import {
@@ -27,7 +27,7 @@ import {
   CustomWorkoutsPage,
 } from "@/pages/admin/treinos";
 
-// ── Redirect inteligente por role ──────────────────────────────────────────
+// Redirect por role
 const RedirectByRole = () => {
   const { user, isAdmin, loading } = useAuth();
   if (loading) {
@@ -49,12 +49,10 @@ function AppRoutes() {
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
 
       {/* STUDENT */}
-      <Route path="/student"            element={<ProtectedRoute><StudentWorkoutsPage /></ProtectedRoute>} />
+      <Route path="/student"             element={<ProtectedRoute><StudentWorkoutsPage /></ProtectedRoute>} />
       <Route path="/student/workout/:id" element={<ProtectedRoute><StudentWorkoutPage /></ProtectedRoute>} />
-
-      {/* Compatibilidade */}
-      <Route path="/app"              element={<Navigate to="/student" replace />} />
-      <Route path="/student/workouts" element={<Navigate to="/student" replace />} />
+      <Route path="/app"                 element={<Navigate to="/student" replace />} />
+      <Route path="/student/workouts"    element={<Navigate to="/student" replace />} />
 
       {/* ADMIN */}
       <Route path="/admin"                        element={<AdminRoute><DashboardPage /></AdminRoute>} />
@@ -77,11 +75,11 @@ function AppRoutes() {
 function App() {
   return (
     <div className="App">
-      <BrowserRouter>
+      <HashRouter>
         <AuthProvider>
           <AppRoutes />
         </AuthProvider>
-      </BrowserRouter>
+      </HashRouter>
       <Toaster position="top-center" richColors closeButton />
     </div>
   );
